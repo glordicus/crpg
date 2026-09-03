@@ -17,3 +17,6 @@ Rust workspace. Simulation core has NO game-engine dependency.
 - Finish only when the task file's stated command passes.
 - Before finishing: `cargo fmt --all`, `cargo clippy -p <crate> -- -D warnings`,
   `cargo test -p <crate>`.
+
+## Note
+- "Godot4" is available in PATH CLI

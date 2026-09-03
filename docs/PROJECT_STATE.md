@@ -8,6 +8,10 @@ Phase 1 — core skeleton and test harness.
 ## Done
 - T004 workspace, 15 stub crates, CI green on Linux and Windows
 - T005 dependency-direction lint
+- T005b determinism lint (bans HashMap/HashSet iteration, wall-clock,
+  threads, and external RNG in `crpg-rules`/`crpg-sim`, plus floats in
+  `crpg-rules`; `// determinism-ok: <reason>` escape hatch). Wired into CI
+  as `lint-determinism`.
 - T001 GDExtension rendering spike — go (ADR-0003), 200 chars @ 231.7 fps,
   FFI cost 87.4 µs/frame, on the RTX 4060 laptop. Spike lives in
   `C:\CRPG\Dev\spike-gdext`, not this workspace.
@@ -36,7 +40,6 @@ Phase 1 — core skeleton and test harness.
 ## Next
 - Someone with two machines on different networks: run the NAT leg of T002
   (`docs/adr/0004-quic-movement-spike.md`, "Outstanding") to close it out
-- T005b determinism lint (ban HashMap iteration and floats in rules crates)
 - T006 crpg-core: EntityId, Fx16_16, DeterministicRng
 - T007 crpg-sim: World and ComponentStore
 
@@ -55,7 +58,6 @@ Phase 1 — core skeleton and test harness.
 - Toolchain pinned at rustc 1.98.0
 
 ## Open questions
-- Whether to buy a subscription (decide end of week 1)
 - Whether to carry a patch for quinn-proto's dedup window (quinn#2710) or
   wait/track upstream, once crpg-net design starts (see ADR-0004)
 
