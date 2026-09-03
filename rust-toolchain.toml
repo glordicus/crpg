@@ -1,0 +1,3 @@
+[toolchain]
+channel = "1.98.0"     # paste the output of `rustc --version`
+components = ["clippy", "rustfmt"]
