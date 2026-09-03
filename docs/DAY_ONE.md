@@ -119,8 +119,8 @@ Write the exact version down. You are pinning this, and the version goes in an A
 **This is the actual milestone of the day.** Everything else is installation. This step answers the only question that matters right now: can this machine build a Rust GDExtension that Godot loads?
 
 ```powershell
-mkdir C:\dev\spike-gdext
-cd C:\dev\spike-gdext
+mkdir C:\CRPG\dev\spike-gdext
+cd C:\CRPG\dev\spike-gdext
 cargo init --lib
 cargo add godot
 ```
@@ -219,7 +219,7 @@ Then:
 Public from day one: unlimited GitHub Actions minutes, and the licence is permissive anyway.
 
 ```powershell
-cd C:\dev
+cd C:\CRPG\dev
 gh auth login
 gh repo create crpg --public --clone
 cd crpg
