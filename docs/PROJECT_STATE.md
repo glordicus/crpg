@@ -11,6 +11,15 @@ Phase 1 — core skeleton and test harness.
 - T001 GDExtension rendering spike — go (ADR-0003), 200 chars @ 231.7 fps,
   FFI cost 87.4 µs/frame, on the RTX 4060 laptop. Spike lives in
   `C:\CRPG\Dev\spike-gdext`, not this workspace.
+- T003 Lua sandbox spike — go (ADR-0005). All 10 escape-attempt fixtures
+  blocked, instruction budget aborts an infinite loop, memory ceiling
+  blocks unbounded allocation, `pairs`/`math.random` substitutions are
+  reproducible under a seed and change with a different one. Found that
+  `mlua`'s `StdLib` bitset does not gate the base library — `load`,
+  `loadfile`, `dofile` are loaded regardless and must be stripped from
+  globals by hand; recorded so `crpg-script` doesn't rediscover it the
+  hard way. Spike lives in `C:\CRPG\Dev\spike-lua-sandbox`, not this
+  workspace.
 
 ## In progress
 - T002 QUIC movement spike — conditional go, local half done (ADR-0004).
@@ -38,6 +47,10 @@ Phase 1 — core skeleton and test harness.
 - ADR-0004 T2 spike go/no-go: conditional go — local reconciliation
   validated, NAT leg outstanding, quinn dedup-window defect flagged as a
   risk to resolve before crpg-net depends on raw QUIC datagrams
+- ADR-0005 T3 spike go/no-go: go — mlua sandbox holds against all 10
+  scripted escape attempts; base-library `load`/`loadfile`/`dofile` are
+  not gated by `StdLib` and must be stripped explicitly, carry that
+  forward into crpg-script
 - Godot pinned at 4.7.2
 - Toolchain pinned at rustc 1.98.0
 
