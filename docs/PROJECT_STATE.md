@@ -1,4 +1,4 @@
-# Project state
+﻿# Project state
 
 Updated: 2026-09-03
 
@@ -6,25 +6,22 @@ Updated: 2026-09-03
 Phase 1 — core skeleton and test harness.
 
 ## Done
-- T004 workspace, 15 stub crates, CI green on Linux + Windows
+- T004 workspace, 15 stub crates, CI green on Linux and Windows
 - T005 dependency-direction lint
 
-## In progress
-- T005b determinism lint (bans HashMap iteration + floats in rules crates)
-
-## Next three
+## Next
+- T005b determinism lint (ban HashMap iteration and floats in rules crates)
 - T006 crpg-core: EntityId, Fx16_16, DeterministicRng
 - T007 crpg-sim: World and ComponentStore
-- T008 state_hash + fixed-step tick loop
 
-## Decisions made
-- ADR-0001 Godot consumed as pinned dependency, not forked
-- ADR-0002 Rust for everything below the presentation layer
+## Decisions
+- ADR-0001 Godot consumed as a pinned dependency, not forked
+- ADR-0002 Rust below the presentation layer
 - Godot pinned at 4.7.2
 - Toolchain pinned at rustc 1.98.0
 
 ## Open questions
-- none
+- Whether to buy a subscription (decide end of week 1)
 
 ## Known problems
-- (nothing yet)
+- CI runs on both push and pull_request, doubling jobs. Narrow push to master.
