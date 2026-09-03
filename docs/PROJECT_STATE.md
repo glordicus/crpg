@@ -38,8 +38,8 @@ Phase 1 — core skeleton and test harness.
   `C:\CRPG\Dev\spike-quic`, not this workspace.
 
 ## Next
-- Someone with two machines on different networks: run the NAT leg of T002
-  (`docs/adr/0004-quic-movement-spike.md`, "Outstanding") to close it out
+- **T002b (up next)** close the NAT leg of T2 — see `tasks/T002b.md`. Needs a
+  human with two machines on different networks; not agent-executable.
 - T006 crpg-core: EntityId, Fx16_16, DeterministicRng
 - T007 crpg-sim: World and ComponentStore
 
