@@ -1,7 +1,7 @@
 # ADR-0006: crpg-core primitive semantics
 
 Date: 2026-09-04
-Status: **Proposed** — decide before T006a starts
+Status: **Accepted**
 
 ## Context
 

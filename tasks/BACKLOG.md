@@ -30,7 +30,7 @@ ADR that motivated it.
 | T004 | done | 2026-09-03 | Workspace, 15 stub crates, CI on Linux + Windows |
 | T005 | done | 2026-09-03 | Dependency-direction lint |
 | T005b | done | 2026-09-03 | Determinism lint |
-| T005c | open | — | `deny.toml` + `cargo deny` in CI; narrow CI to `push: master` |
+| T005c | done | 2026-09-04 | `deny.toml` + `cargo deny` in CI; narrow CI to `push: master` |
 | **T006a** | **next** | — | `CoreError`, `EntityId`, `GenerationalArena<T>` |
 | T006b | open | — | `Fx16_16` fixed point |
 | T006c | open | — | `DeterministicRng`, PCG32 with named sub-streams |
@@ -81,8 +81,10 @@ only on one `pub mod` line in `lib.rs`.
   is unreachable, as spec §7.7 anticipated. Scoped future work: a UPnP/IGD
   client (`igd` crate) or documented manual port forwarding for operators.
   Not on the critical path until there is a real server to reach.
-- **ADR-0006 is Proposed, not Accepted.** T006a–e assume it. Accept, amend, or
-  reject it before starting T006a.
+- **ADR-0006 Accepted** on 2026-09-04. Its four decisions (generational arena
+  in `crpg-core`, `Fx16_16` saturating/floor, PCG32 sub-streams in a
+  `BTreeMap`, interned ids runtime-only) govern T006a–e, T007, T008 and T014.
+  No longer a blocker.
 
 ## Not yet numbered
 

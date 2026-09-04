@@ -49,14 +49,11 @@ Phase 1 — core skeleton and test harness.
 - (nothing — see Next)
 
 ## Next
-- **Decide ADR-0006** (Proposed). It fixes four crpg-core semantics that
-  T007/T008/T010/T014 all inherit: where the generational arena lives,
-  Fx16_16 saturation + floor rounding, PCG32 with named sub-streams in one
-  serializable object, and interned ids being runtime-only (never persisted).
-  T006a-e assume it.
 - T006a crpg-core: CoreError, EntityId, GenerationalArena — then T006b-e.
   Spec §24's single T6 is split into five reviewable tasks; see
-  `tasks/BACKLOG.md`.
+  `tasks/BACKLOG.md`. T006a establishes `Cargo.toml`, the module layout and
+  `crpg-core/AGENTS.md`, and wires in the ADR-0006-authorized `proptest` /
+  `serde_json` dev-dependencies.
 - T007 crpg-sim: World and ComponentStore
 
 ## Task backlog
@@ -76,7 +73,10 @@ the carried blockers and the throughput log.
   scripted escape attempts; base-library `load`/`loadfile`/`dofile` are
   not gated by `StdLib` and must be stripped explicitly, carry that
   forward into crpg-script
-- ADR-0006 crpg-core primitive semantics — **Proposed**, not yet accepted
+- ADR-0006 crpg-core primitive semantics — **Accepted** on 2026-09-04:
+  generational arena in core, `Fx16_16` saturating/floor, PCG32 sub-streams in
+  a `BTreeMap`, interned ids runtime-only (persist the string). Authorises
+  `proptest` + `serde_json` as workspace dev-dependencies.
 - Godot pinned at 4.7.2
 - Toolchain pinned at rustc 1.98.0
 
@@ -84,7 +84,6 @@ the carried blockers and the throughput log.
 - Whether to carry a patch for quinn-proto's dedup window (quinn#2710) or
   wait/track upstream, once crpg-net design starts (see ADR-0004). Not on the
   critical path until after T018 — the in-memory transport comes first.
-- ADR-0006's four decisions. Drafted with recommendations; needs a read.
 
 ## Known problems
 - Scaffolding from workflow plan §15 still missing, none of it blocking:
