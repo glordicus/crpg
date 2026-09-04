@@ -36,9 +36,9 @@ ADR that motivated it.
 | T005 | done | 2026-09-03 | Dependency-direction lint |
 | T005b | done | 2026-09-03 | Determinism lint |
 | T005c | done | 2026-09-04 | `deny.toml` + `cargo deny` in CI; narrow CI to `push: master` |
-| T006a | on branch | `t006a-core-entity` | `CoreError`, `EntityId`, `GenerationalArena<T>` |
-| — | on branch | `t006a-core-entity` | Review 1 follow-up: arena guard hole, lint gaps, lint self-tests in CI |
-| — | on branch | `t006a-core-entity` | Review 2 follow-up: arena exhaustion boundary, lint blind spots, CI `--locked`, licences |
+| T006a | done | 2026-09-04 | `CoreError`, `EntityId`, `GenerationalArena<T>` |
+| — | done | 2026-09-04 | Review 1 follow-up: arena guard hole, lint gaps, lint self-tests in CI |
+| — | done | 2026-09-04 | Review 2 follow-up: arena exhaustion boundary, lint blind spots, CI `--locked`, licences |
 | **T006b** | **next** | — | `Fx16_16` fixed point |
 | T006c | open | — | `DeterministicRng`, PCG32 with named sub-streams |
 | T006d | open | — | `Tick`, `RoundCount`, `Ulid` |
@@ -126,4 +126,4 @@ Record it here, one line per week.
 
 | Week ending | Merged | Notes |
 |---|---|---|
-| 2026-09-06 | 8 | T001–T005c; the whole project to date. T006a and its two review follow-ups are finished and green but sitting on `t006a-core-entity`, so they are not counted here — merged means merged. Cost per merged task not tracked yet. |
+| 2026-09-06 | 9 | T001–T005c plus T006a; the whole project to date, all on `master`. Two review follow-ups merged alongside T006a and are not counted, being fixes rather than numbered tasks. Cost per merged task not tracked yet. |

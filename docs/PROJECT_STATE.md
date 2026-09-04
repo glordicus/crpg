@@ -6,9 +6,10 @@ Updated: 2026-09-04
 Phase 1 — core skeleton and test harness.
 
 ## Branch state
-`master` and `origin/master` are both at ADR-0006 (`a51d4b5`). **T006a and the
-two review follow-ups are unmerged**, on branch `t006a-core-entity`. Merge that
-branch before starting T006b; `tasks/BACKLOG.md` marks them accordingly.
+Clean: everything below is merged to `master`, nothing is sitting on a branch.
+When that stops being true, say so here and mark the task `on branch` in
+`tasks/BACKLOG.md` — this section exists because the file once reported three
+merged commits that were not.
 
 ## Done
 - T004 workspace, 15 stub crates, CI green on Linux and Windows
@@ -21,8 +22,7 @@ branch before starting T006b; `tasks/BACKLOG.md` marks them accordingly.
   job in CI (pinned `EmbarkStudios/cargo-deny-action@v2.1.1`, cargo-deny
   0.20.2), and CI narrowed to push-on-master + pull-request so a PR branch no
   longer runs every job twice.
-- T006a (*unmerged, on `t006a-core-entity`*) `crpg-core`: `CoreError`,
-  `EntityId`, `GenerationalArena<T>`, plus the
+- T006a `crpg-core`: `CoreError`, `EntityId`, `GenerationalArena<T>`, plus the
   crate's `Cargo.toml`, module layout and `AGENTS.md`. Arena semantics are
   ADR-0006 Decision 1: generations start at 1, lowest-index slot reuse,
   ascending-index iteration as a documented invariant, and a slot whose
@@ -33,7 +33,7 @@ branch before starting T006b; `tasks/BACKLOG.md` marks them accordingly.
   tests pass: 4 property tests (id-reuse safety, arena invariants,
   iteration order, serde round trip including next-allocation), 18 unit tests
   and a doctest. (Now 26: the boundary fixes below added three.)
-- Review follow-up 1 (whole-project review, 2026-09-04; *unmerged*). Closed the
+- Review follow-up 1 (whole-project review, 2026-09-04). Closed the
   gaps it found, none of which any gate was catching:
   - The arena's deserialization guard accepted a *retired* slot (generation
     `u32::MAX`) that was on the free list, and would then issue an id at
@@ -55,7 +55,7 @@ branch before starting T006b; `tasks/BACKLOG.md` marks them accordingly.
     pre-approved for nothing) and silenced the unused-allowance warnings.
   - Stripped the UTF-8 BOM from 14 tracked files; both lints now read
     `utf-8-sig` so a reintroduced BOM cannot mask a line-1 violation.
-- Review follow-up 2 (second whole-project review, 2026-09-04; *unmerged*).
+- Review follow-up 2 (second whole-project review, 2026-09-04).
   Same shape as the first — every finding was a **partial enumeration**, a
   check that knew about some of its cases and not the rest:
   - **The arena's exhaustion boundary was off by one, and the runtime and the
