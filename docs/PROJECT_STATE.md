@@ -1,6 +1,6 @@
 ﻿# Project state
 
-Updated: 2026-09-03
+Updated: 2026-09-04
 
 ## Phase
 Phase 1 — core skeleton and test harness.
@@ -24,22 +24,27 @@ Phase 1 — core skeleton and test harness.
   globals by hand; recorded so `crpg-script` doesn't rediscover it the
   hard way. Spike lives in `C:\CRPG\Dev\spike-lua-sandbox`, not this
   workspace.
+- T002/T002b QUIC movement spike — go (ADR-0004, updated 2026-09-04).
+  Prediction/reconciliation validated (small, non-compounding corrections
+  even under ~30% effective loss). NAT leg closed: a human-run two-machine
+  test (server behind a normal home router, no port forward/DMZ; client on
+  a separate network) failed to connect, as spec §7.7 anticipated. Local
+  Windows Firewall and router UPnP capability were both confirmed present
+  and ruled out as the cause; the failure is the NAT layer having no port
+  mapping, which is exactly what §7.7 already deferred handling for.
+  Known, scoped future fix: give the real server a UPnP/IGD client (`igd`
+  crate) or document manual port-forwarding for operators. Still flagged
+  as a risk, unresolved: a real quinn 0.11.11 defect
+  (quinn-rs/quinn#2710: 129-packet dedup window silently discards
+  reordered-but-delivered datagrams) that inflates effective loss well
+  past the shim's configured rate under realistic jitter — needs a
+  decision before crpg-net's snapshot channel depends on raw datagrams.
+  Spike lives in `C:\CRPG\Dev\spike-quic`, not this workspace.
 
 ## In progress
-- T002 QUIC movement spike — conditional go, local half done (ADR-0004).
-  Prediction/reconciliation validated (small, non-compounding corrections
-  even under ~30% effective loss). Found and documented a real quinn
-  0.11.11 defect (quinn-rs/quinn#2710: 129-packet dedup window silently
-  discards reordered-but-delivered datagrams) that inflates effective loss
-  well past the shim's configured rate under realistic jitter — flagged as
-  a risk for crpg-net's snapshot channel, not yet resolved. **NAT leg not
-  done** — needs a real two-machine test, which this single-machine agent
-  session cannot perform; see ADR-0004's "Outstanding". Spike lives in
-  `C:\CRPG\Dev\spike-quic`, not this workspace.
+- (nothing — see Next)
 
 ## Next
-- **T002b (up next)** close the NAT leg of T2 — see `tasks/T002b.md`. Needs a
-  human with two machines on different networks; not agent-executable.
 - T006 crpg-core: EntityId, Fx16_16, DeterministicRng
 - T007 crpg-sim: World and ComponentStore
 
@@ -47,9 +52,11 @@ Phase 1 — core skeleton and test harness.
 - ADR-0001 Godot consumed as a pinned dependency, not forked
 - ADR-0002 Rust below the presentation layer
 - ADR-0003 T1 spike go/no-go: go
-- ADR-0004 T2 spike go/no-go: conditional go — local reconciliation
-  validated, NAT leg outstanding, quinn dedup-window defect flagged as a
-  risk to resolve before crpg-net depends on raw QUIC datagrams
+- ADR-0004 T2 spike go/no-go: go — local reconciliation validated, NAT
+  leg closed (fails without manual port forward/UPnP request, as
+  expected per §7.7; known future fix is a UPnP/IGD client or documented
+  manual forwarding), quinn dedup-window defect still flagged as a risk
+  to resolve before crpg-net depends on raw QUIC datagrams
 - ADR-0005 T3 spike go/no-go: go — mlua sandbox holds against all 10
   scripted escape attempts; base-library `load`/`loadfile`/`dofile` are
   not gated by `StdLib` and must be stripped explicitly, carry that

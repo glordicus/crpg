@@ -1,8 +1,8 @@
 # ADR-0004: QUIC movement spike result — T2
 
-Date: 2026-09-03
-Status: Accepted, with one open item (NAT leg) and one flagged risk (see
-Consequences)
+Date: 2026-09-03 (NAT leg closed 2026-09-04)
+Status: Accepted. Both of T2's test criteria have now been run (see
+"NAT leg result" below); one flagged risk remains open (see Consequences).
 
 ## Context
 `CRPG_ENGINE_SPEC.md` §7.2/§24 (task T2) picks `quinn` (QUIC) as the
@@ -106,16 +106,57 @@ patch the spec's "pinned Godot + small patch queue" philosophy (§1) already
 budgets for — it just turns out `quinn`, not Godot, is where the first one
 is needed.
 
-**NAT leg: not independently verified.** This spike ran entirely on one
-machine (loopback, real UDP but not a real path). A genuine NAT test needs
-two endpoints on different networks — a second physical machine or host
-outside this box's LAN — which this sandboxed single-machine agent session
-has no way to stand up. This is the literal point of that half of T2's
-test criteria (§24: "a connection succeeds over the public internet through
-NAT"), so it cannot be honestly marked done from here. **Outstanding**:
-run `server.exe` on a machine behind a normal home router with no manual
-port forward, and connect `client.exe <public-ip-or-ddns>:5000` from
-another network (a phone hotspot is enough) to close this out.
+## NAT leg result (T002b, run 2026-09-04)
+
+Run manually (human-executed, not agent-executable — see `tasks/T002b.md`)
+across two real, differently-owned networks:
+
+- **Setup A:** `server.exe` on a laptop tethered to a phone's mobile
+  hotspot (cellular network, no admin access to the carrier's NAT). Client
+  on a separate network. Result: client printed `[client] connecting to
+  <addr>:5000 (SNI localhost)` then errored with a connect timeout; server
+  logged no `[server] connection from ...` line at all — the handshake
+  never reached it.
+- **Setup B (the scenario §24/T002b actually specifies):** `server.exe` on
+  a laptop connected to a normal home broadband router, **no manual port
+  forward, no DMZ**. Client on a separate network (phone hotspot). Same
+  result: client-side connect timeout, no inbound connection logged on the
+  server.
+
+Two local causes were checked and ruled out before attributing this to the
+network:
+
+- **Windows Firewall on the server host.** `Get-NetFirewallRule` showed an
+  existing explicit inbound `Allow` rule scoped to exactly
+  `...\spike-quic\target\release\server.exe`, UDP, port 5000.
+  `Get-NetConnectionProfile` confirmed the active network's category
+  (`Public`) matched the rule's profile in both setups. The firewall was
+  not blocking this traffic.
+- **UPnP.** The home router in Setup B had UPnP enabled (checked in its
+  admin UI). The connection failed anyway. This is expected, not
+  contradictory: UPnP only opens a mapping if an application explicitly
+  requests one via the IGD protocol, and this spike's `server.rs` does no
+  such thing — it only binds and listens (see `src/bin/server.rs`).
+  A router capable of UPnP does nothing by itself.
+
+**Conclusion:** the base case — an unmodified home router, zero manual
+configuration — fails to accept an inbound QUIC connection, exactly as
+spec §7.7 anticipated when it deferred "NAT punching" as future scope
+rather than assumed-free behaviour. This is not a defect in the spike; it
+is the NAT layer doing what NAT layers do absent a port mapping. Because
+UPnP was confirmed present and unused, the fix is squarely *application*
+work (have the real server request a UPnP/IGD mapping on startup, e.g. via
+the `igd` crate) or *operational* (document that self-hosted servers need
+a manual port forward) — not a router-configuration gap, and not the
+harder "NAT punching/relay" case described in §7.7 for stricter NAT types
+(e.g. CGNAT, which Setup A's cellular network likely also involves, though
+that wasn't independently isolated from the general "no mapping exists"
+result).
+
+The NAT leg of T002 is now closed. T002b's outcome is: **fails without
+manual configuration, cause fully attributed to the NAT layer (not local
+firewall, not absence of router UPnP capability), with a known and scoped
+future fix.**
 
 ## Consequences
 - The prediction/reconciliation implementation in this spike
@@ -125,8 +166,14 @@ another network (a phone hotspot is enough) to close this out.
 - `crpg-net`'s eventual channel design (§7.2's `snapshot` = unreliable
   datagram) needs a decision on #2710 before it is trusted at anything but
   loopback-quality reordering. Track it as a named risk, not a footnote.
-- The NAT half of T2 is not closed. `docs/PROJECT_STATE.md` reflects this
-  as outstanding, not done.
+- The NAT half of T2 is closed (see "NAT leg result" above). `crpg-net`'s
+  server needs either a UPnP/IGD client (e.g. the `igd` crate) to
+  request a port mapping automatically on startup, or documented
+  operator instructions for a manual port forward — plain "bind and
+  listen" (this spike's approach) will not be reachable from outside the
+  LAN on a default home router. True NAT punching/relay for stricter NAT
+  types (symmetric NAT, CGNAT) remains deferred per §7.7 and was not
+  proven necessary or sufficient by this test.
 
 ## Alternatives rejected
 None — no need to escalate away from QUIC/`quinn`; the defect found is
