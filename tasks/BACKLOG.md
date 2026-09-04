@@ -31,8 +31,8 @@ ADR that motivated it.
 | T005 | done | 2026-09-03 | Dependency-direction lint |
 | T005b | done | 2026-09-03 | Determinism lint |
 | T005c | done | 2026-09-04 | `deny.toml` + `cargo deny` in CI; narrow CI to `push: master` |
-| **T006a** | **next** | — | `CoreError`, `EntityId`, `GenerationalArena<T>` |
-| T006b | open | — | `Fx16_16` fixed point |
+| T006a | done | 2026-09-04 | `CoreError`, `EntityId`, `GenerationalArena<T>` |
+| **T006b** | **next** | — | `Fx16_16` fixed point |
 | T006c | open | — | `DeterministicRng`, PCG32 with named sub-streams |
 | T006d | open | — | `Tick`, `RoundCount`, `Ulid` |
 | T006e | open | — | `Interner`, `StatId`, `TagId` |
@@ -40,10 +40,11 @@ ADR that motivated it.
 | T008 | open | — | `state_hash` + the fixed-step tick loop |
 | T009 | open | — | Replay record/playback harness |
 
-T006a–e are spec §24's single T6, split per ADR-0006. Do T006a first — it
-establishes `Cargo.toml`, the module layout and `crpg-core/AGENTS.md`. After
-that, b–e are independent and two can run in parallel worktrees; they collide
-only on one `pub mod` line in `lib.rs`.
+T006a–e are spec §24's single T6, split per ADR-0006. T006a is done: it
+established `Cargo.toml`, the module layout and `crpg-core/AGENTS.md`. b–e are
+independent of each other and two can run in parallel worktrees; they collide
+only on one `pub mod` line in `lib.rs`, and each extends `CoreError` and
+`crpg-core/AGENTS.md` with its own section.
 
 ## Phase 2 — Campaign data format
 
@@ -106,8 +107,8 @@ layer.
 ## Throughput
 
 Workflow plan §13 asks for tasks merged per week and cost per merged task.
-Record it here, one line per week, once T006a lands.
+Record it here, one line per week.
 
 | Week ending | Merged | Notes |
 |---|---|---|
-| 2026-09-06 | — | |
+| 2026-09-06 | 9 | T001–T005c plus T006a; the whole project to date. Cost per merged task not tracked yet. |

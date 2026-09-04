@@ -1,3 +1,4 @@
 ﻿#![forbid(unsafe_code)]
 #![warn(missing_docs)]
-//! TODO: crate purpose.
+//! Campaign data format: canonical JSON schema types, serde, loader,
+//! validation, and migration framework.

@@ -1,3 +1,4 @@
 ﻿#![forbid(unsafe_code)]
 #![warn(missing_docs)]
-//! TODO: crate purpose.
+//! Editor document model: loaded/indexed campaign, edit-command
+//! apply/undo/redo, validation, and save.

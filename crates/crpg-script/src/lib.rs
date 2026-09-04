@@ -1,3 +1,5 @@
 ﻿#![forbid(unsafe_code)]
 #![warn(missing_docs)]
-//! TODO: crate purpose.
+//! Scripting: Lua 5.4 sandbox with budget enforcement, event IR
+//! (graph nodes/edges compiled from visual graphs and Lua), and
+//! serializable `Wait` continuations that survive save/load.

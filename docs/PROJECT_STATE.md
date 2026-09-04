@@ -16,6 +16,17 @@ Phase 1 — core skeleton and test harness.
   job in CI (pinned `EmbarkStudios/cargo-deny-action@v2.1.1`, cargo-deny
   0.20.2), and CI narrowed to push-on-master + pull-request so a PR branch no
   longer runs every job twice.
+- T006a `crpg-core`: `CoreError`, `EntityId`, `GenerationalArena<T>`, plus the
+  crate's `Cargo.toml`, module layout and `AGENTS.md`. Arena semantics are
+  ADR-0006 Decision 1: generations start at 1, lowest-index slot reuse,
+  ascending-index iteration as a documented invariant, and a slot whose
+  generation would overflow is retired rather than wrapped. The free list is
+  serialized so a loaded arena allocates the ids the saved one would have, and
+  deserialization rejects an arena whose slots and free list disagree — the
+  only fallible operation in the crate so far, and the only `CoreError`
+  variant. 23 tests pass: 4 property tests (id-reuse safety, arena invariants,
+  iteration order, serde round trip including next-allocation), 18 unit tests
+  and a doctest.
 - T001 GDExtension rendering spike — go (ADR-0003), 200 chars @ 231.7 fps,
   FFI cost 87.4 µs/frame, on the RTX 4060 laptop. Spike lives in
   `C:\CRPG\Dev\spike-gdext`, not this workspace.
@@ -49,12 +60,14 @@ Phase 1 — core skeleton and test harness.
 - (nothing — see Next)
 
 ## Next
-- T006a crpg-core: CoreError, EntityId, GenerationalArena — then T006b-e.
-  Spec §24's single T6 is split into five reviewable tasks; see
-  `tasks/BACKLOG.md`. T006a establishes `Cargo.toml`, the module layout and
-  `crpg-core/AGENTS.md`, and wires in the ADR-0006-authorized `proptest` /
-  `serde_json` dev-dependencies.
-- T007 crpg-sim: World and ComponentStore
+- T006b-e crpg-core: `Fx16_16`, `DeterministicRng`, `Tick`/`RoundCount`/`Ulid`,
+  the interner. T006a laid down the crate's `Cargo.toml`, module layout and
+  `AGENTS.md`, so b-e are independent of each other; two can run in parallel
+  worktrees and collide only on a `pub mod` line in `lib.rs`. Each extends
+  `CoreError` and `crpg-core/AGENTS.md` with its own section.
+- T007 crpg-sim: World and ComponentStore. Its entity arena is
+  `GenerationalArena<EntityMeta>` from T006a, already property-tested — not a
+  second implementation.
 
 ## Task backlog
 `tasks/BACKLOG.md` is the index of every numbered task with its status, plus
@@ -87,4 +100,5 @@ the carried blockers and the throughput log.
 
 ## Known problems
 - Scaffolding from workflow plan §15 still missing, none of it blocking:
-  `tools/preflight.ps1`, `docs/adr/0000-template.md`, per-crate `AGENTS.md`.
+  `tools/preflight.ps1`, `docs/adr/0000-template.md`, per-crate `AGENTS.md`
+  for every crate except `crpg-core` (written in T006a).

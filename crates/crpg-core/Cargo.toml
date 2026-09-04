@@ -5,10 +5,12 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+serde = { workspace = true }
+thiserror = { workspace = true }
 
 [dev-dependencies]
 # ADR-0006 dev-only deps: proptest for property tests, serde_json for the
-# Serialize/Deserialize round-trip tests. Wired here so T006a's tests can use
-# them; the property tests themselves land with T006a.
+# Serialize/Deserialize round-trip tests. Neither may become a normal
+# dependency of this crate.
 proptest.workspace = true
 serde_json.workspace = true

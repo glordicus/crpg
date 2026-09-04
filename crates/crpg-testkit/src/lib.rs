@@ -1,3 +1,4 @@
 ﻿#![forbid(unsafe_code)]
 #![warn(missing_docs)]
-//! TODO: crate purpose.
+//! Test utilities: fixture campaigns, deterministic replay runner,
+//! `state_hash()`, and contract conformance suites shared across crates.
