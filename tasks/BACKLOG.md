@@ -1,0 +1,111 @@
+# Task backlog
+
+The index of every numbered task. Derived from `docs/CRPG_ENGINE_SPEC.md` §24
+(the first eighteen tasks) and §19.1 (the small backlog). One line per task;
+detail lives in `tasks/TNNN.md`.
+
+Status: `done` · `next` · `open` · `blocked` · `human` (needs a person, not an
+agent).
+
+Numbering: spec §24 calls the spikes T1–T3 and the build tasks T4–T18. Task
+files are zero-padded (`T004.md`). A letter suffix means the spec's single task
+was split into independently reviewable pieces — the split is recorded in the
+ADR that motivated it.
+
+---
+
+## Phase 0 — Feasibility spikes
+
+| Task | Status | Merged | Summary |
+|---|---|---|---|
+| T001 | done | 2026-09-03 | GDExtension rendering spike — go, ADR-0003 |
+| T002 | done | 2026-09-03 | QUIC movement spike — conditional go, ADR-0004 |
+| T002b | done | 2026-09-04 | T2's NAT leg — confirmed failure, cause attributed |
+| T003 | done | 2026-09-03 | Lua sandbox spike — go, ADR-0005 |
+
+## Phase 1 — Core skeleton and test harness
+
+| Task | Status | Merged | Summary |
+|---|---|---|---|
+| T004 | done | 2026-09-03 | Workspace, 15 stub crates, CI on Linux + Windows |
+| T005 | done | 2026-09-03 | Dependency-direction lint |
+| T005b | done | 2026-09-03 | Determinism lint |
+| T005c | open | — | `deny.toml` + `cargo deny` in CI; narrow CI to `push: master` |
+| **T006a** | **next** | — | `CoreError`, `EntityId`, `GenerationalArena<T>` |
+| T006b | open | — | `Fx16_16` fixed point |
+| T006c | open | — | `DeterministicRng`, PCG32 with named sub-streams |
+| T006d | open | — | `Tick`, `RoundCount`, `Ulid` |
+| T006e | open | — | `Interner`, `StatId`, `TagId` |
+| T007 | open | — | `crpg-sim`: `World`, `ComponentStore<T>`, spawn/despawn/query |
+| T008 | open | — | `state_hash` + the fixed-step tick loop |
+| T009 | open | — | Replay record/playback harness |
+
+T006a–e are spec §24's single T6, split per ADR-0006. Do T006a first — it
+establishes `Cargo.toml`, the module layout and `crpg-core/AGENTS.md`. After
+that, b–e are independent and two can run in parallel worktrees; they collide
+only on one `pub mod` line in `lib.rs`.
+
+## Phase 2 — Campaign data format
+
+| Task | Status | Merged | Summary |
+|---|---|---|---|
+| T010 | open | — | `crpg-data`: schema types, canonical writer, loader |
+| T011 | open | — | Validation and positioned diagnostics, `crpgc validate --json` |
+| T012 | open | — | Migration framework |
+| T013 | open | — | Scaffolding and introspection CLI |
+
+## Phase 3 — Rules kernel
+
+| Task | Status | Merged | Summary |
+|---|---|---|---|
+| T014 | open | — | `crpg-rules`: stats and the modifier pipeline |
+| T015 | open | — | Dice, outcome tables, resolution |
+| T016 | open | — | `rulesets/minimal-d6` + headless combat |
+| T017 | open | — | `rulesets/srd-lite` — the abstraction gate |
+
+## Phase 4 — Server and networking
+
+| Task | Status | Merged | Summary |
+|---|---|---|---|
+| T018 | open | — | `crpg-net` protocol v1 + simulated-network transport |
+
+---
+
+## Carried decisions and blockers
+
+- **quinn dedup window (quinn-rs/quinn#2710).** ADR-0004 flags it unresolved.
+  It does not block T018, which uses the in-memory transport — it blocks the
+  *quinn* transport that follows T018. Decide (carry a patch, or wait on
+  upstream) before that task is written.
+- **NAT traversal.** T002b confirmed a server behind an unmodified home router
+  is unreachable, as spec §7.7 anticipated. Scoped future work: a UPnP/IGD
+  client (`igd` crate) or documented manual port forwarding for operators.
+  Not on the critical path until there is a real server to reach.
+- **ADR-0006 is Proposed, not Accepted.** T006a–e assume it. Accept, amend, or
+  reject it before starting T006a.
+
+## Not yet numbered
+
+Small items from spec §19.1 that do not yet have a task file, roughly in the
+order they become available: canonical JSON writer (§19.1 #11, part of T010),
+`crpgc new` (#10, T013), `DiceExpr` (#15, T015), `OutcomeTable` (#16, T015),
+`ResourcePool` (#17, T015), the Lua sandbox module (#18, `crpg-script`), codec
+round-trip (#19, T018), simulated transport (#20, T018), Recast bake (#21),
+Godot proxy spawning (#22), interpolation buffer (#23), editor tree (#24),
+generated property form (#25), problems panel (#26).
+
+Missing scaffolding from the workflow plan §15 checklist, none of it blocking:
+`tools/preflight.ps1` (+ `.sh`), `docs/adr/0000-template.md`, per-crate
+`AGENTS.md` beyond `crpg-core`'s, and a self-hosted runner for the slow CI
+layer.
+
+---
+
+## Throughput
+
+Workflow plan §13 asks for tasks merged per week and cost per merged task.
+Record it here, one line per week, once T006a lands.
+
+| Week ending | Merged | Notes |
+|---|---|---|
+| 2026-09-06 | — | |

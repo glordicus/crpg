@@ -45,8 +45,21 @@ Phase 1 — core skeleton and test harness.
 - (nothing — see Next)
 
 ## Next
-- T006 crpg-core: EntityId, Fx16_16, DeterministicRng
+- **Decide ADR-0006** (Proposed). It fixes four crpg-core semantics that
+  T007/T008/T010/T014 all inherit: where the generational arena lives,
+  Fx16_16 saturation + floor rounding, PCG32 with named sub-streams in one
+  serializable object, and interned ids being runtime-only (never persisted).
+  T006a-e assume it.
+- T006a crpg-core: CoreError, EntityId, GenerationalArena — then T006b-e.
+  Spec §24's single T6 is split into five reviewable tasks; see
+  `tasks/BACKLOG.md`.
+- T005c deny.toml + cargo deny in CI, and narrow CI to push-on-master.
+  Small; worth landing before T006a adds the first real dependency.
 - T007 crpg-sim: World and ComponentStore
+
+## Task backlog
+`tasks/BACKLOG.md` is the index of every numbered task with its status, plus
+the carried blockers and the throughput log.
 
 ## Decisions
 - ADR-0001 Godot consumed as a pinned dependency, not forked
@@ -61,12 +74,20 @@ Phase 1 — core skeleton and test harness.
   scripted escape attempts; base-library `load`/`loadfile`/`dofile` are
   not gated by `StdLib` and must be stripped explicitly, carry that
   forward into crpg-script
+- ADR-0006 crpg-core primitive semantics — **Proposed**, not yet accepted
 - Godot pinned at 4.7.2
 - Toolchain pinned at rustc 1.98.0
 
 ## Open questions
 - Whether to carry a patch for quinn-proto's dedup window (quinn#2710) or
-  wait/track upstream, once crpg-net design starts (see ADR-0004)
+  wait/track upstream, once crpg-net design starts (see ADR-0004). Not on the
+  critical path until after T018 — the in-memory transport comes first.
+- ADR-0006's four decisions. Drafted with recommendations; needs a read.
 
 ## Known problems
 - CI runs on both push and pull_request, doubling jobs. Narrow push to master.
+  Task written: T005c.
+- No `deny.toml` and no `cargo deny` job, though spec §24 T4 and §15.4 both
+  require them. Also T005c.
+- Scaffolding from workflow plan §15 still missing, none of it blocking:
+  `tools/preflight.ps1`, `docs/adr/0000-template.md`, per-crate `AGENTS.md`.
