@@ -12,6 +12,10 @@ Phase 1 — core skeleton and test harness.
   threads, and external RNG in `crpg-rules`/`crpg-sim`, plus floats in
   `crpg-rules`; `// determinism-ok: <reason>` escape hatch). Wired into CI
   as `lint-determinism`.
+- T005c `deny.toml` (licences, advisories, bans, sources) plus a `cargo deny`
+  job in CI (pinned `EmbarkStudios/cargo-deny-action@v2.1.1`, cargo-deny
+  0.20.2), and CI narrowed to push-on-master + pull-request so a PR branch no
+  longer runs every job twice.
 - T001 GDExtension rendering spike — go (ADR-0003), 200 chars @ 231.7 fps,
   FFI cost 87.4 µs/frame, on the RTX 4060 laptop. Spike lives in
   `C:\CRPG\Dev\spike-gdext`, not this workspace.
@@ -53,8 +57,6 @@ Phase 1 — core skeleton and test harness.
 - T006a crpg-core: CoreError, EntityId, GenerationalArena — then T006b-e.
   Spec §24's single T6 is split into five reviewable tasks; see
   `tasks/BACKLOG.md`.
-- T005c deny.toml + cargo deny in CI, and narrow CI to push-on-master.
-  Small; worth landing before T006a adds the first real dependency.
 - T007 crpg-sim: World and ComponentStore
 
 ## Task backlog
@@ -85,9 +87,5 @@ the carried blockers and the throughput log.
 - ADR-0006's four decisions. Drafted with recommendations; needs a read.
 
 ## Known problems
-- CI runs on both push and pull_request, doubling jobs. Narrow push to master.
-  Task written: T005c.
-- No `deny.toml` and no `cargo deny` job, though spec §24 T4 and §15.4 both
-  require them. Also T005c.
 - Scaffolding from workflow plan §15 still missing, none of it blocking:
   `tools/preflight.ps1`, `docs/adr/0000-template.md`, per-crate `AGENTS.md`.

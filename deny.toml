@@ -1,0 +1,65 @@
+# Licence + dependency policy. Enforced in CI by `cargo deny check` (the
+# `deny` job in .github/workflows/ci.yml, step 3 of the integration gate in
+# spec §15.4). A copyleft or otherwise unapproved dependency must be a CI
+# failure, not a discovery. The workspace is `MIT OR Apache-2.0` and spec
+# §1.5 wants it to stay permissive.
+#
+# Config format is for cargo-deny 0.20.x (the version bundled by the pinned
+# `EmbarkStudios/cargo-deny-action@v2.1.1` and used locally).
+
+[licenses]
+# Dev-only dependencies are still checked. proptest's dev-only tree
+# (authorised by ADR-0006) is never linked into a shipped binary, so a future
+# skip/exception there is not the same concession as one on a runtime
+# dependency.
+include-dev = true
+# The permissive set the project already uses. In cargo-deny 0.20 every
+# licence not in this list is denied (the old `deny`/`copyleft` fields are
+# removed), so anything copyleft fails CI rather than surfacing later. The
+# workspace declares `MIT OR Apache-2.0`.
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Unicode-3.0",
+    "Zlib",
+    "MPL-2.0",
+]
+# Any dependency that fails this policy must be resolved without widening the
+# allow list. Widening the policy is a decision (an ADR), not a CI fix.
+
+[bans]
+multiple-versions = "deny"
+# Dev-dependencies are included so duplicates inside dev-only trees (e.g.
+# proptest's) also need an explicit skip entry rather than silently stacking.
+multiple-versions-include-dev = true
+# The skip list is deliberately explicit rather than automatic: it makes
+# dependency sprawl (workflow plan §11) visible in a diff, so growing it is a
+# conscious, reviewed action. Keep it empty unless a crate truly must coexist
+# in two versions. If proptest's dev-only tree duplicates a crate once T006a
+# lands, that is exactly what this list is for.
+skip = []
+
+[advisories]
+# Deny unmaintained crates outright.
+unmaintained = "all"
+# NOTE on version compatibility: cargo-deny 0.20 removed the `vulnerability`,
+# `unsound` and `notice` fields (see cargo-deny PR #611). All of those now
+# error unconditionally, and `unmaintained`/`unsound` only accept error-scopes
+# (`all`/`workspace`/`transitive`/`none`), with no "warn" option. So this
+# policy denies vulnerability, unsound, notice and unmaintained alike — the
+# task's "warn" for unsound/notice is not expressible at this version and this
+# is deliberately the stricter side of that request.
+yanked = "warn"
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-git = []
+# crates.io only, no git dependencies.
+allow-registry = [
+    "https://github.com/rust-lang/crates.io-index",
+]
