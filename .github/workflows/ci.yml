@@ -10,6 +10,15 @@ on:
   schedule:
     - cron: "0 6 * * 1"
 
+# Action pins: the three JavaScript actions below sit on moving major tags,
+# so they pick up fixes without a bump here. They are on the majors that
+# declare the node24 runtime -- GitHub is retiring node20, and an action
+# still asking for it will stop starting when the compatibility shim goes.
+# checkout v5+ requires a runner at v2.327.1 or newer, which matters only if
+# the self-hosted runner in workflow plan section 15 ever lands.
+# cargo-deny-action is the exception twice over: a docker action, and pinned
+# exactly (see the comment on the deny job).
+
 # Read-only by default; no job here writes to the repository.
 permissions:
   contents: read
@@ -28,7 +37,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: Swatinem/rust-cache@v2
       - run: cargo fmt --all -- --check
       # `--locked` on both: Cargo.lock is committed, and without this cargo is
@@ -43,7 +52,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # Pinned to an exact version on purpose, unlike the major-tag pins above:
       # deny.toml is written against the cargo-deny 0.20.x config format, and
       # the action is what chooses the cargo-deny version. A floating pin here
@@ -54,10 +63,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # deps.py needs tomllib, which is 3.11+. Pinning the floor means the
       # lints run on the oldest version they claim to support.
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
       - run: python tools/lint/deps.py
@@ -66,8 +75,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
       - run: python tools/lint/determinism.py
@@ -78,8 +87,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
       - run: python -m unittest discover -s tools/lint -p "test_*.py" -v
