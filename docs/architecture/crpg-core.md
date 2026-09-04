@@ -69,9 +69,16 @@ src/
 and extend `CoreError`, so they collide on a single `pub mod` line and can run
 in parallel worktrees.
 
-Planned, one module each: `fx.rs` (`Fx16_16`), `rng.rs` (`DeterministicRng`,
-`Pcg32`), `time.rs` (`Tick`, `RoundCount`, `Ulid`), `intern.rs` (`Interner`,
-`StatId`, `TagId`).
+Planned, as the task files specify them: `fixed.rs` (`Fx16_16`, T006b),
+`rng.rs` (`DeterministicRng`, `Pcg32`, T006c), `time.rs` (`Tick`,
+`RoundCount`) and `ulid.rs` (`Ulid`) — T006d writes both — and `intern.rs`
+(`Interner`, `StatId`, `TagId`, T006e).
+
+`Ulid` is a separate module from `Tick` and `RoundCount` deliberately: they are
+all "time" colloquially, but `Tick` and `RoundCount` are simulation counters
+while a `Ulid` is an identifier that happens to embed a timestamp, and its
+timestamp and randomness are both supplied by the caller rather than read from
+a clock.
 
 ### `error.rs`
 
