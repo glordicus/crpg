@@ -6,6 +6,11 @@ interner) each extend it. Do not document a type before its task lands.
 
 ## Purpose
 
+Design doc: [`docs/architecture/crpg-core.md`](../../docs/architecture/crpg-core.md)
+— what the crate is and how its pieces fit. This file is the working contract:
+what you may do and what will break. Decisions live in ADR-0006. Keep the three
+linked rather than copied.
+
 The primitives every other crate is allowed to depend on, and nothing else.
 `crpg-core` is the bottom of the dependency graph (`core <- data <- rules <-
 sim <- ...`) and depends on no workspace crate. Everything here is

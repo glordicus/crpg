@@ -178,9 +178,7 @@ the carried blockers and the throughput log.
 - Scaffolding from workflow plan §15 still missing, none of it blocking:
   `tools/preflight.ps1`, `docs/adr/0000-template.md`, per-crate `AGENTS.md`
   for every crate except `crpg-core` (written in T006a).
-- Spec §14 lists `docs/architecture/`, `docs/contracts/` and `docs/guides/`;
-  none exist. §15.6 says "if a crate has no architecture doc, it is not ready
-  for agent work", and T006a went ahead on `crpg-core` without one. **Decide
-  which way that rule goes** — write the per-crate architecture docs, or strike
-  the rule from the spec — rather than leaving it quietly unobserved. Not
-  blocking, but it is a stated gate the project is not keeping.
+- Spec §14's `docs/contracts/` and `docs/guides/` still do not exist. Neither
+  has a gate depending on it: contracts matter once `crpg-contracts` holds
+  traits, guides once there is a campaign format to author against.
+  (`docs/architecture/` was the one with a gate — §15.6 — and now exists.)

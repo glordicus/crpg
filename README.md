@@ -136,6 +136,7 @@ These are non-negotiable and loaded by agents every session ([AGENTS.md](AGENTS.
 - [docs/CRPG_ENGINE_SPEC.md](docs/CRPG_ENGINE_SPEC.md) — the technical specification and roadmap
 - [docs/PROJECT_STATE.md](docs/PROJECT_STATE.md) — living status file
 - [docs/HANDOFF.md](docs/HANDOFF.md) — how to continue work
+- [docs/architecture/](docs/architecture/) — per-crate design docs (spec §15.6: a crate without one is not ready for agent work)
 - [docs/adr/](docs/adr/) — architecture decision records
 
 ## License

@@ -29,6 +29,13 @@ Rust workspace. Simulation core has NO game-engine dependency.
 ## Working rules
 - One task = one crate. If a task needs two crates, stop and say so.
 - Finish only when the task file's stated command passes.
+- The first task that puts real code in a crate also writes
+  `docs/architecture/<crate>.md` and the crate's `AGENTS.md`. Spec §15.6: a
+  crate with no architecture doc is not ready for agent work. Later tasks in
+  that crate extend both rather than starting new ones. See
+  `docs/architecture/README.md` for what belongs in which file — an ADR is
+  *why*, an architecture doc is *what*, an `AGENTS.md` is *how to work on it*,
+  and copying between them is how they come to disagree.
 - Before finishing, run every gate CI runs — `--all-targets` matters, because
   CI lints test code and a bare `-p <crate>` does not:
 

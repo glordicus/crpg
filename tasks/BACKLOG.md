@@ -109,13 +109,26 @@ Missing scaffolding from the workflow plan §15 checklist, none of it blocking:
 `AGENTS.md` beyond `crpg-core`'s, and a self-hosted runner for the slow CI
 layer.
 
-Also missing, and unlike the above it is a rule the project is not keeping
-rather than a convenience it has not built: spec §14's `docs/architecture/`,
-`docs/contracts/` and `docs/guides/`. §15.6 says "if a crate has no
-architecture doc, it is not ready for agent work", and T006a went ahead on
-`crpg-core` regardless. Either write them or strike the rule — an unobserved
-gate is worse than no gate, because it makes every other stated gate weaker
-evidence.
+`docs/architecture/` now exists, with its README and `crpg-core.md`. Spec
+§15.6's rule — "if a crate has no architecture doc, it is not ready for agent
+work" — is a readiness gate rather than a documentation quota, so the remaining
+fourteen docs are **due with the first task that puts real code in each crate**,
+not written up front against designs that have not been decided.
+`docs/architecture/README.md` holds the index and the per-crate status.
+
+**Every task that opens a crate carries this in its definition of done**,
+alongside the crate's `AGENTS.md`:
+
+```
+- [ ] `docs/architecture/<crate>.md` written (or extended, if it exists),
+      and its row in `docs/architecture/README.md` updated
+```
+
+Spec §14 also lists `docs/contracts/` and `docs/guides/`, which still do not
+exist. Unlike the architecture docs, no stated gate depends on them: contracts
+are meaningful once `crpg-contracts` has traits in it, and authoring guides
+once there is a campaign format to author against. They stay on the scaffolding
+list above rather than being a rule the project is failing to keep.
 
 ---
 
