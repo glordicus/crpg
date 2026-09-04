@@ -32,6 +32,7 @@ ADR that motivated it.
 | T005b | done | 2026-09-03 | Determinism lint |
 | T005c | done | 2026-09-04 | `deny.toml` + `cargo deny` in CI; narrow CI to `push: master` |
 | T006a | done | 2026-09-04 | `CoreError`, `EntityId`, `GenerationalArena<T>` |
+| — | done | 2026-09-04 | Review follow-up: arena guard hole, lint gaps, lint self-tests in CI |
 | **T006b** | **next** | — | `Fx16_16` fixed point |
 | T006c | open | — | `DeterministicRng`, PCG32 with named sub-streams |
 | T006d | open | — | `Tick`, `RoundCount`, `Ulid` |

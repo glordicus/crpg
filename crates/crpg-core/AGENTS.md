@@ -55,7 +55,12 @@ Crate-wide:
 - No `HashMap`/`HashSet` — anywhere, including tests. No floats, no clock, no
   threads, no I/O, no randomness that is not seeded and explicit.
 - Deserialization is an untrusted-input boundary. An arena whose slots and free
-  list disagree is rejected with `CoreError::CorruptArena`, not loaded.
+  list disagree is rejected with `CoreError::CorruptArena`, not loaded. That
+  includes a *retired* slot found on the free list: honouring it would issue an
+  id at generation `u32::MAX` from a slot invariant 4 has taken out of
+  circulation.
+- The float and hash-map bans are lint-enforced here, not just documented:
+  `tools/lint/determinism.py` covers `crpg-core` alongside `crpg-rules`.
 
 ## Allowed dependencies
 
@@ -71,6 +76,7 @@ cargo clippy -p crpg-core --all-targets -- -D warnings
 cargo test -p crpg-core
 python tools/lint/deps.py
 python tools/lint/determinism.py
+python -m unittest discover -s tools/lint -p "test_*.py"
 ```
 
 Any `proptest-regressions/` file a failure produces is **committed**, not
@@ -90,7 +96,11 @@ ignored: it is the shrunk counterexample, and losing it loses the regression.
 - **Slot state is three-valued**, and the third is easy to miss: vacant-and-free
   (on the free list) versus vacant-and-retired (not on it, generation
   `u32::MAX`). Code that treats "vacant" as "reusable" reintroduces the wrapping
-  bug invariant 4 exists to prevent.
+  bug invariant 4 exists to prevent. The fourth combination — vacant, retired
+  *and* on the free list — is not a state, it is corruption, and the
+  `TryFrom<ArenaRepr<T>>` guard rejects it (`defect::RETIRED_BUT_FREE`). Both
+  vacant arms of that match need a generation check; only checking one is how
+  the hole got there the first time.
 - **Generation retirement is untestable from `tests/`.** Reaching `u32::MAX`
   honestly needs four billion insert/remove pairs, so it is a unit test in
   `src/entity.rs` using a `#[cfg(test)]` `force_generation` helper that reaches

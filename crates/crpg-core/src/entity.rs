@@ -332,6 +332,7 @@ mod defect {
     pub(super) const FREE_INDEX_RANGE: &str = "free list names a slot that does not exist";
     pub(super) const GENERATION_ZERO: &str = "slot generation 0 is never valid";
     pub(super) const OCCUPIED_BUT_FREE: &str = "occupied slot is on the free list";
+    pub(super) const RETIRED_BUT_FREE: &str = "retired slot is on the free list";
     pub(super) const VACANT_NOT_FREE: &str =
         "vacant slot is neither on the free list nor retired at u32::MAX";
 }
@@ -365,6 +366,14 @@ impl<T> TryFrom<ArenaRepr<T>> for GenerationalArena<T> {
             match (slot.value.is_some(), free.contains(&(index as u32))) {
                 (true, true) => return Err(CoreError::CorruptArena(defect::OCCUPIED_BUT_FREE)),
                 (true, false) => len += 1,
+                // Vacant and free is legal only while the slot can still be
+                // allocated. A generation already at `u32::MAX` is retired
+                // (invariant 4), and a retired slot is never on the free list —
+                // honouring this one would issue an id at `u32::MAX`, from a
+                // slot that is supposed to be out of circulation for good.
+                (false, true) if slot.generation == u32::MAX => {
+                    return Err(CoreError::CorruptArena(defect::RETIRED_BUT_FREE))
+                }
                 // Vacant and not free is legal only for a retired slot.
                 (false, false) if slot.generation != u32::MAX => {
                     return Err(CoreError::CorruptArena(defect::VACANT_NOT_FREE))
@@ -476,6 +485,7 @@ mod tests {
                     defect::FREE_INDEX_RANGE,
                     defect::GENERATION_ZERO,
                     defect::OCCUPIED_BUT_FREE,
+                    defect::RETIRED_BUT_FREE,
                     defect::VACANT_NOT_FREE,
                 ] {
                     if text.contains(defect) {
@@ -505,6 +515,13 @@ mod tests {
         assert_eq!(
             load(r#"{"slots":[{"generation":2,"value":null}],"free":[]}"#),
             Err(CoreError::CorruptArena(defect::VACANT_NOT_FREE))
+        );
+        // A retired slot handed back to the free list. Accepting it would let
+        // the arena issue an id at generation `u32::MAX` from a slot invariant
+        // 4 has already taken out of circulation.
+        assert_eq!(
+            load(r#"{"slots":[{"generation":4294967295,"value":null}],"free":[0]}"#),
+            Err(CoreError::CorruptArena(defect::RETIRED_BUT_FREE))
         );
     }
 }

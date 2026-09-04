@@ -26,10 +26,19 @@ allow = [
     "ISC",
     "Unicode-3.0",
     "Zlib",
-    "MPL-2.0",
 ]
+# MPL-2.0 is deliberately NOT here. It is weak copyleft — file-level, so it is
+# survivable, but it is a different category from the permissive set above and
+# the same rule applies to it as to anything else: if a dependency needs it,
+# that is an ADR, not a one-line edit to this list.
+#
 # Any dependency that fails this policy must be resolved without widening the
 # allow list. Widening the policy is a decision (an ADR), not a CI fix.
+#
+# Entries above that nothing currently uses are pre-approvals within the one
+# permissive family, not policy drift, so the unused-allowance warning is off
+# rather than the list being trimmed to exactly today's graph.
+unused-allowed-license = "allow"
 
 [bans]
 multiple-versions = "deny"

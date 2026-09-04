@@ -1,4 +1,4 @@
-﻿# ADR-0002: Rust for everything below the presentation layer
+# ADR-0002: Rust for everything below the presentation layer
 
 Date: 2026-09-03
 Status: Accepted

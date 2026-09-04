@@ -1,4 +1,4 @@
-﻿# Project state
+# Project state
 
 Updated: 2026-09-04
 
@@ -27,6 +27,28 @@ Phase 1 — core skeleton and test harness.
   variant. 23 tests pass: 4 property tests (id-reuse safety, arena invariants,
   iteration order, serde round trip including next-allocation), 18 unit tests
   and a doctest.
+- Review follow-up (whole-project review, 2026-09-04). Closed the gaps it
+  found, none of which any gate was catching:
+  - The arena's deserialization guard accepted a *retired* slot (generation
+    `u32::MAX`) that was on the free list, and would then issue an id at
+    `u32::MAX` from it. Now `CoreError::CorruptArena(RETIRED_BUT_FREE)`.
+  - `deps.py` read only `[dependencies]`. It now checks `[dev-dependencies]`
+    and `[build-dependencies]` too (a dev-dep is still an import, and ADR-0006
+    has just made dev-deps a live concept), fails closed on a crate missing
+    from the allowed-edges table, and enforces the unsafe rule directly by
+    requiring `#![forbid(unsafe_code)]` on every crate root but `crpg-godot`'s.
+    That check immediately found `crpg-cli/src/main.rs` missing it.
+  - `determinism.py` now covers `crpg-core` as well. `crpg-sim` stays exempt
+    from the float ban on purpose — spec §2.4 puts positions in `f32` — and
+    README/AGENTS.md now state what is actually enforced rather than the
+    vaguer "rules paths".
+  - The two lint self-test files used incompatible conventions, so
+    `unittest discover` silently ran 5 of 11 tests and reported OK, and CI ran
+    neither. Both are `unittest` now, 22 tests, with a `lint-selftest` CI job.
+  - `deny.toml`: dropped the unused `MPL-2.0` allowance (weak copyleft
+    pre-approved for nothing) and silenced the unused-allowance warnings.
+  - Stripped the UTF-8 BOM from 14 tracked files; both lints now read
+    `utf-8-sig` so a reintroduced BOM cannot mask a line-1 violation.
 - T001 GDExtension rendering spike — go (ADR-0003), 200 chars @ 231.7 fps,
   FFI cost 87.4 µs/frame, on the RTX 4060 laptop. Spike lives in
   `C:\CRPG\Dev\spike-gdext`, not this workspace.

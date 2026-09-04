@@ -1,17 +1,22 @@
 #!/usr/bin/env python3
 """Determinism lint for the CRPG simulation crates.
 
-Scans every .rs file under crates/crpg-rules/ and crates/crpg-sim/ and fails
-on patterns that would make the deterministic simulation non-deterministic:
+Scans every .rs file under crates/crpg-core/, crates/crpg-rules/ and
+crates/crpg-sim/ and fails on patterns that would make the deterministic
+simulation non-deterministic:
 
-Both crates:
+All three crates:
   - HashMap / HashSet iteration (use IndexMap or BTreeMap)
   - SystemTime / Instant / std::time:: (wall clock is not sim time)
   - std::thread
   - rand:: / thread_rng (use crpg_core's seeded RNG)
 
-crpg-rules only:
+crpg-core and crpg-rules only:
   - f32 / f64 (rules maths uses integers or fixed-point)
+
+crpg-sim is deliberately exempt from the float ban: spec 2.4 puts spatial
+positions in f32, outside the rules path. Everything a rule reads is Fx16_16
+or an integer, and that is enforced one layer down in crpg-rules.
 
 Lines that are comments are skipped. Any line ending in
   // determinism-ok: <reason>
@@ -27,7 +32,7 @@ import re
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent.parent
-CRATES = ["crpg-rules", "crpg-sim"]
+CRATES = ["crpg-core", "crpg-rules", "crpg-sim"]
 
 # (crate name, rule name, regex)
 RULES = [
@@ -36,7 +41,7 @@ RULES = [
     ("both", "no-wallclock", re.compile(r"\b(SystemTime|Instant)\b|std::time::")),
     ("both", "no-thread", re.compile(r"std::thread")),
     ("both", "no-external-rng", re.compile(r"\brand::|thread_rng")),
-    ("rules", "no-float", re.compile(r"\bf(?:32|64)\b")),
+    ("no-float-crates", "no-float", re.compile(r"\bf(?:32|64)\b")),
 ]
 
 ESCAPE_RE = re.compile(r"// determinism-ok:\s*(\S.*)?\s*$")
@@ -45,7 +50,7 @@ COMMENT_RE = re.compile(r"^\s*//")
 
 def check_file(crate_name, path):
     found = []
-    for lineno, raw in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+    for lineno, raw in enumerate(path.read_text(encoding="utf-8-sig").splitlines(), 1):
         line = raw.strip()
         if not line or COMMENT_RE.match(raw):
             continue
@@ -56,10 +61,8 @@ def check_file(crate_name, path):
                 found.append((lineno, "escape-no-reason", raw))
             continue
         applies = ("both",)
-        if crate_name == "crpg-rules":
-            applies = ("both", "rules")
-        if crate_name == "crpg-sim":
-            applies = ("both",)
+        if crate_name in ("crpg-core", "crpg-rules"):
+            applies = ("both", "no-float-crates")
         for scope, rule_name, pattern in RULES:
             if scope not in applies:
                 continue

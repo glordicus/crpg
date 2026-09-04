@@ -2,13 +2,14 @@
 """Self-tests for the determinism lint.
 
 Builds temporary fixture crate trees and asserts the lint produces the expected
-violations. Run: python tools/lint/test_determinism.py
+violations. Run: python -m unittest discover -s tools/lint -p "test_*.py"
 """
 
 import pathlib
 import subprocess
 import sys
 import tempfile
+import unittest
 
 HERE = pathlib.Path(__file__).resolve().parent
 SCRIPT = HERE / "determinism.py"
@@ -82,7 +83,7 @@ pub fn f() {
 }
 """
 
-FLOAT_RULES_SRC = """
+FLOAT_SRC = """
 pub fn ac() -> f64 { 10.5 }
 pub fn hp() -> i32 { 20 }
 """
@@ -90,6 +91,10 @@ pub fn hp() -> i32 { 20 }
 FLOAT_SIM_SRC = """
 pub struct Transform { x: f64, y: f64 }
 """
+
+# A crate root carrying a UTF-8 BOM, as several stubs in this repo do. The BOM
+# must not hide a violation on line 1.
+BOM_SRC = "﻿use std::collections::HashMap;\n"
 
 
 def make_crate(root, name, sources):
@@ -108,6 +113,7 @@ def run_lint(root):
 
 
 def rules_of(root):
+    """Return (exit_code, [rule_name, ...]) for a lint run over `root`."""
     proc = run_lint(root)
     rules = []
     for line in proc.stdout.splitlines():
@@ -117,88 +123,94 @@ def rules_of(root):
     return proc.returncode, rules
 
 
-def test_clean():
-    with tempfile.TemporaryDirectory() as d:
-        root = pathlib.Path(d)
-        make_crate(root, "crpg-rules", {"lib.rs": CLEAN_SRC})
-        make_crate(root, "crpg-sim", {"lib.rs": CLEAN_SRC})
-        code, rules = rules_of(root)
-        assert code == 0, f"clean should pass, got {rules}"
-        print("ok: clean file passes")
+class LintCase(unittest.TestCase):
+    """Base class providing a one-crate fixture run."""
 
-
-def test_banned_patterns():
-    banned = [
-        ("no-hashmap", "crpg-rules", HASHMAP_SRC),
-        ("no-hashmap", "crpg-sim", HASHMAP_SRC),
-        ("no-hashset", "crpg-rules", HASHSET_SRC),
-        ("no-wallclock", "crpg-rules", WALLCLOCK_SRC),
-        ("no-thread", "crpg-rules", THREAD_SRC),
-        ("no-external-rng", "crpg-rules", RNG_SRC),
-    ]
-    for expected_rule, crate, src in banned:
+    def lint_one(self, crate, src, fname="lib.rs"):
         with tempfile.TemporaryDirectory() as d:
             root = pathlib.Path(d)
-            make_crate(root, crate, {"lib.rs": src})
+            make_crate(root, crate, {fname: src})
+            return rules_of(root)
+
+
+class TestClean(LintCase):
+    def test_clean_tree_passes(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = pathlib.Path(d)
+            for crate in ("crpg-core", "crpg-rules", "crpg-sim"):
+                make_crate(root, crate, {"lib.rs": CLEAN_SRC})
             code, rules = rules_of(root)
-            assert code == 1, f"{expected_rule} should fail"
-            assert expected_rule in rules, f"{crate}: expected {expected_rule}, got {rules}"
-            print(f"ok: {crate} {expected_rule} detected")
+            self.assertEqual(code, 0, f"clean tree should pass, got {rules}")
 
 
-def test_banned_in_comment_passes():
-    with tempfile.TemporaryDirectory() as d:
-        root = pathlib.Path(d)
-        make_crate(root, "crpg-rules", {"lib.rs": COMMENT_SRC})
-        code, rules = rules_of(root)
-        assert code == 0, f"comment should be skipped, got {rules}"
-        print("ok: banned pattern in comment passes")
+class TestBannedPatterns(LintCase):
+    """The `both`-scope rules apply to every linted crate."""
+
+    CASES = [
+        ("no-hashmap", "crpg-core", HASHMAP_SRC),
+        ("no-hashmap", "crpg-rules", HASHMAP_SRC),
+        ("no-hashmap", "crpg-sim", HASHMAP_SRC),
+        ("no-hashset", "crpg-core", HASHSET_SRC),
+        ("no-hashset", "crpg-rules", HASHSET_SRC),
+        ("no-wallclock", "crpg-core", WALLCLOCK_SRC),
+        ("no-wallclock", "crpg-rules", WALLCLOCK_SRC),
+        ("no-thread", "crpg-rules", THREAD_SRC),
+        ("no-external-rng", "crpg-core", RNG_SRC),
+        ("no-external-rng", "crpg-rules", RNG_SRC),
+    ]
+
+    def test_banned_patterns_are_detected(self):
+        for expected_rule, crate, src in self.CASES:
+            with self.subTest(crate=crate, rule=expected_rule):
+                code, rules = self.lint_one(crate, src)
+                self.assertEqual(code, 1, f"{crate}/{expected_rule} should fail")
+                self.assertIn(expected_rule, rules)
 
 
-def test_escape_ok_passes():
-    with tempfile.TemporaryDirectory() as d:
-        root = pathlib.Path(d)
-        make_crate(root, "crpg-rules", {"lib.rs": ESCAPE_OK_SRC})
-        code, rules = rules_of(root)
-        assert code == 0, f"valid escape should pass, got {rules}"
-        print("ok: valid determinism-ok escape passes")
+class TestSkips(LintCase):
+    def test_banned_pattern_in_comment_passes(self):
+        code, rules = self.lint_one("crpg-rules", COMMENT_SRC)
+        self.assertEqual(code, 0, f"comment should be skipped, got {rules}")
+
+    def test_escape_with_reason_passes(self):
+        code, rules = self.lint_one("crpg-rules", ESCAPE_OK_SRC)
+        self.assertEqual(code, 0, f"valid escape should pass, got {rules}")
+
+    def test_escape_without_reason_fails(self):
+        code, rules = self.lint_one("crpg-rules", ESCAPE_NO_REASON_SRC)
+        self.assertEqual(code, 1, "escape with no reason should fail")
+        self.assertIn("escape-no-reason", rules)
 
 
-def test_escape_no_reason_fails():
-    with tempfile.TemporaryDirectory() as d:
-        root = pathlib.Path(d)
-        make_crate(root, "crpg-rules", {"lib.rs": ESCAPE_NO_REASON_SRC})
-        code, rules = rules_of(root)
-        assert code == 1, "escape with no reason should fail"
-        assert "escape-no-reason" in rules, f"expected escape-no-reason, got {rules}"
-        print("ok: escape with no reason fails")
+class TestFloatScope(LintCase):
+    """Floats are banned in crpg-core and crpg-rules, allowed in crpg-sim.
+
+    crpg-sim holds spatial positions, which spec 2.4 puts in f32 outside the
+    rules path. If that decision is ever revisited, this test is the place it
+    shows up.
+    """
+
+    def test_float_in_core_fails(self):
+        code, rules = self.lint_one("crpg-core", FLOAT_SRC)
+        self.assertEqual(code, 1, "f64 in crpg-core should fail")
+        self.assertIn("no-float", rules)
+
+    def test_float_in_rules_fails(self):
+        code, rules = self.lint_one("crpg-rules", FLOAT_SRC)
+        self.assertEqual(code, 1, "f64 in crpg-rules should fail")
+        self.assertIn("no-float", rules)
+
+    def test_float_in_sim_passes(self):
+        code, rules = self.lint_one("crpg-sim", FLOAT_SIM_SRC)
+        self.assertEqual(code, 0, f"f64 in crpg-sim should pass, got {rules}")
 
 
-def test_float_rules_fails_sim_ok():
-    with tempfile.TemporaryDirectory() as d:
-        root = pathlib.Path(d)
-        make_crate(root, "crpg-rules", {"lib.rs": FLOAT_RULES_SRC})
-        code, rules = rules_of(root)
-        assert code == 1, "f64 in crpg-rules should fail"
-        assert "no-float" in rules, f"expected no-float in rules, got {rules}"
-        print("ok: f64 in crpg-rules fails")
-    with tempfile.TemporaryDirectory() as d:
-        root = pathlib.Path(d)
-        make_crate(root, "crpg-sim", {"lib.rs": FLOAT_SIM_SRC})
-        code, rules = rules_of(root)
-        assert code == 0, f"f64 in crpg-sim should pass, got {rules}"
-        print("ok: f64 in crpg-sim passes")
-
-
-def main():
-    test_clean()
-    test_banned_patterns()
-    test_banned_in_comment_passes()
-    test_escape_ok_passes()
-    test_escape_no_reason_fails()
-    test_float_rules_fails_sim_ok()
-    print("All determinism lint tests passed.")
+class TestEncoding(LintCase):
+    def test_bom_does_not_hide_a_violation_on_line_one(self):
+        code, rules = self.lint_one("crpg-rules", BOM_SRC)
+        self.assertEqual(code, 1, "BOM should not mask the first line")
+        self.assertIn("no-hashmap", rules)
 
 
 if __name__ == "__main__":
-    main()
+    unittest.main()

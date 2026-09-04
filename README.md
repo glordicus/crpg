@@ -97,18 +97,27 @@ cargo test -p <crate>
 ```
 
 CI (Linux + Windows, `.github/workflows/ci.yml`) runs `fmt`, `clippy`, and tests
-across the workspace, plus a dependency-direction architecture lint
-(`tools/lint/deps.py`).
+across the workspace, plus `cargo deny`, the dependency-direction architecture
+lint (`tools/lint/deps.py`), the determinism lint (`tools/lint/determinism.py`),
+and the self-tests for both lints:
+
+```sh
+python -m unittest discover -s tools/lint -p "test_*.py"
+```
 
 ## Development rules
 
 These are non-negotiable and loaded by agents every session ([AGENTS.md](AGENTS.md)):
 
-- Only `crpg-godot` may depend on `godot`. Only `crpg-godot` may use `unsafe`.
+- Only `crpg-godot` may depend on `godot`. Only `crpg-godot` may use `unsafe` —
+  every other crate root carries `#![forbid(unsafe_code)]`, and the
+  architecture lint fails if one does not.
 - Dependency direction: `core <- data <- rules <- sim <- {net, ai, script} <- server`.
-  Never import upward. Never create a cycle.
-- No `HashMap` iteration and no `f32`/`f64` in `crpg-rules` or `crpg-sim` rules
-  paths. Use `IndexMap`/`BTreeMap` and integers or fixed-point.
+  Never import upward. Never create a cycle. Dev- and build-dependencies count.
+- No `HashMap`/`HashSet` in `crpg-core`, `crpg-rules` or `crpg-sim`; use
+  `IndexMap`/`BTreeMap`. No `f32`/`f64` in `crpg-core` or `crpg-rules`; use
+  integers or `Fx16_16`. `crpg-sim` may use `f32` for spatial positions only
+  (spec §2.4), never in a rules path.
 - Do not modify `crpg-contracts` or `rust-toolchain.toml`.
 - Do not weaken or delete an existing test to make a build pass.
 - One task = one crate.
