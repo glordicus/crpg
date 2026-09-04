@@ -18,6 +18,22 @@ use crate::error::CoreError;
 /// zeroed or `Default`-constructed struct would hold — is never a valid entity.
 const FIRST_GENERATION: u32 = 1;
 
+/// The generation a retired slot is pinned at, and the one generation that is
+/// never issued.
+///
+/// It is a tombstone, not a value: a slot reaching it is out of circulation
+/// permanently (invariant 4). Reserving it rather than issuing it is what lets
+/// "generation == `RETIRED_GENERATION`" mean *retired* everywhere — in the
+/// live arena and in the deserialization guard alike — instead of meaning
+/// "retired, unless the slot happens to still be on the free list".
+///
+/// The cost is one generation out of four billion. The alternative was a state
+/// the live arena could reach and its own loader would reject.
+const RETIRED_GENERATION: u32 = u32::MAX;
+
+/// The highest generation an [`EntityId`] can carry, one below the tombstone.
+const LAST_ISSUABLE_GENERATION: u32 = RETIRED_GENERATION - 1;
+
 /// A handle to an entity: a slot index plus the generation of that slot.
 ///
 /// An `EntityId` is only meaningful to the [`GenerationalArena`] that issued
@@ -31,10 +47,42 @@ const FIRST_GENERATION: u32 = 1;
 ///
 /// Ordering is by index first, then generation, matching the ascending-index
 /// order of [`GenerationalArena::iter`].
+///
+/// Deserialization is validated: an id whose generation is 0 or
+/// [`RETIRED_GENERATION`] is refused with [`CoreError::InvalidEntityId`],
+/// because an arena issues neither. That does not make a deserialized id
+/// *authoritative* — any well-formed id still addresses whatever now occupies
+/// its slot, and checking that a peer is allowed to name it belongs to the
+/// layer that owns the peer — but it does keep the crate's own invariant from
+/// being something only the minting side honours.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(try_from = "EntityIdRepr")]
 pub struct EntityId {
     index: u32,
     generation: u32,
+}
+
+/// The serialized shape of an [`EntityId`].
+///
+/// Exists for the same reason [`ArenaRepr`] does: deserialization goes through
+/// [`TryFrom`] so it can reject a value no arena would have issued.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct EntityIdRepr {
+    index: u32,
+    generation: u32,
+}
+
+impl TryFrom<EntityIdRepr> for EntityId {
+    type Error = CoreError;
+
+    fn try_from(repr: EntityIdRepr) -> crate::Result<Self> {
+        match repr.generation {
+            0 => Err(CoreError::InvalidEntityId(defect::ID_GENERATION_ZERO)),
+            RETIRED_GENERATION => Err(CoreError::InvalidEntityId(defect::ID_GENERATION_RETIRED)),
+            generation => Ok(Self::new(repr.index, generation)),
+        }
+    }
 }
 
 impl EntityId {
@@ -70,8 +118,10 @@ impl EntityId {
 /// - **free** — `value` is `None`; in the free set; `generation` has already
 ///   been bumped past the last id issued for this slot.
 /// - **retired** — `value` is `None`; *not* in the free set; `generation` is
-///   [`u32::MAX`]. The slot is never allocated again.
+///   [`RETIRED_GENERATION`]. The slot is never allocated again, and no id was
+///   ever issued at that generation.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct Slot<T> {
     generation: u32,
     value: Option<T>,
@@ -109,9 +159,11 @@ struct ArenaRepr<T> {
 ///    regardless of how they got there.
 /// 3. **Dead ids stay dead.** An `EntityId` that has been removed never
 ///    resolves again, for the life of the arena.
-/// 4. **Generations never wrap.** A slot whose generation would exceed
-///    [`u32::MAX`] is retired permanently rather than wrapped, so invariant 3
-///    has no exception.
+/// 4. **Generations never wrap.** [`u32::MAX`] is a reserved tombstone that is
+///    never issued; a slot whose generation would *reach* it is retired
+///    permanently rather than wrapped, so invariant 3 has no exception. Every
+///    issued generation is therefore in `1..=u32::MAX - 1`, and
+///    "generation == `u32::MAX`" means retired with no qualifications.
 /// 5. **`len` counts live entries**, not slots. Free and retired slots do not
 ///    count.
 ///
@@ -190,12 +242,23 @@ impl<T> GenerationalArena<T> {
                 slot.value.is_none(),
                 "occupied slot {index} was on the free list"
             );
+            debug_assert!(
+                slot.generation <= LAST_ISSUABLE_GENERATION,
+                "retired slot {index} was on the free list"
+            );
             slot.value = Some(value);
             self.len += 1;
             EntityId::new(index, slot.generation)
         } else {
-            let index =
-                u32::try_from(self.slots.len()).expect("GenerationalArena exceeded u32::MAX slots");
+            // The cap is `u32::MAX` *slots*, so the highest index is
+            // `u32::MAX - 1`. The deserialization guard rejects a slot count a
+            // `u32` cannot hold, so the live arena must not be able to build
+            // one either — otherwise a full arena would serialize to a save it
+            // could not load.
+            let index = u32::try_from(self.slots.len())
+                .ok()
+                .filter(|&index| index < u32::MAX)
+                .expect("GenerationalArena exceeded u32::MAX slots");
             self.slots.push(Slot {
                 generation: FIRST_GENERATION,
                 value: Some(value),
@@ -210,8 +273,8 @@ impl<T> GenerationalArena<T> {
     ///
     /// The slot's generation is bumped before the slot returns to the free
     /// list, so `id` — and every copy of it anywhere — is dead from here on. If
-    /// bumping would overflow, the slot is retired instead of reused: it is
-    /// never allocated again.
+    /// the bump would reach [`RETIRED_GENERATION`], the slot is retired instead
+    /// of reused: it is never allocated again.
     pub fn remove(&mut self, id: EntityId) -> Option<T> {
         let slot = self.slots.get_mut(id.index as usize)?;
         if slot.generation != id.generation {
@@ -219,15 +282,31 @@ impl<T> GenerationalArena<T> {
         }
         let value = slot.value.take()?;
         self.len -= 1;
-        // `None` means the generation is exhausted: retire the slot rather than
-        // wrap it. Wrapping would eventually reissue an id that a long-lived
-        // reference still holds, which is the one thing this type exists to
-        // prevent.
-        if let Some(next) = slot.generation.checked_add(1) {
-            slot.generation = next;
-            self.free.insert(id.index);
-        }
+        Self::retire_or_free(&mut self.free, id.index, slot);
         Some(value)
+    }
+
+    /// Advances a just-vacated slot's generation, returning it to the free list
+    /// unless doing so would exhaust it.
+    ///
+    /// The single place invariant 4 is implemented. `remove` and `clear` both
+    /// route through it because a divergence between them is invisible: the
+    /// only input that separates the two branches needs four billion removals
+    /// of one slot to reach honestly.
+    ///
+    /// Reaching [`RETIRED_GENERATION`] retires the slot — vacant, pinned there,
+    /// and *not* on the free list. Wrapping would eventually reissue an id a
+    /// long-lived reference still holds, which is the one thing this type
+    /// exists to prevent; issuing the tombstone itself would leave the arena in
+    /// a state its own deserialization guard rejects as corrupt.
+    fn retire_or_free(free: &mut BTreeSet<u32>, index: u32, slot: &mut Slot<T>) {
+        debug_assert!(slot.value.is_none(), "slot {index} is still occupied");
+        if slot.generation < LAST_ISSUABLE_GENERATION {
+            slot.generation += 1;
+            free.insert(index);
+        } else {
+            slot.generation = RETIRED_GENERATION;
+        }
     }
 
     /// Borrows the entry `id` addresses, or `None` if `id` is dead.
@@ -282,11 +361,9 @@ impl<T> GenerationalArena<T> {
     pub fn clear(&mut self) {
         for (index, slot) in self.slots.iter_mut().enumerate() {
             if slot.value.take().is_some() {
-                if let Some(next) = slot.generation.checked_add(1) {
-                    slot.generation = next;
-                    // `index < slots.len() <= u32::MAX` by construction.
-                    self.free.insert(index as u32);
-                }
+                // `index < slots.len() <= u32::MAX` by construction (`insert`
+                // caps the slot count), so the cast is exact.
+                Self::retire_or_free(&mut self.free, index as u32, slot);
             }
         }
         self.len = 0;
@@ -332,9 +409,16 @@ mod defect {
     pub(super) const FREE_INDEX_RANGE: &str = "free list names a slot that does not exist";
     pub(super) const GENERATION_ZERO: &str = "slot generation 0 is never valid";
     pub(super) const OCCUPIED_BUT_FREE: &str = "occupied slot is on the free list";
+    pub(super) const OCCUPIED_AT_RETIRED: &str =
+        "occupied slot is at the retirement generation u32::MAX, which is never issued";
     pub(super) const RETIRED_BUT_FREE: &str = "retired slot is on the free list";
     pub(super) const VACANT_NOT_FREE: &str =
         "vacant slot is neither on the free list nor retired at u32::MAX";
+
+    /// Defects rejected when an [`EntityId`](super::EntityId) is deserialized.
+    pub(super) const ID_GENERATION_ZERO: &str = "generation 0 is never issued";
+    pub(super) const ID_GENERATION_RETIRED: &str =
+        "generation u32::MAX is the retirement tombstone and is never issued";
 }
 
 impl<T> TryFrom<ArenaRepr<T>> for GenerationalArena<T> {
@@ -363,19 +447,27 @@ impl<T> TryFrom<ArenaRepr<T>> for GenerationalArena<T> {
             if slot.generation == 0 {
                 return Err(CoreError::CorruptArena(defect::GENERATION_ZERO));
             }
+            // All four arms need a generation check, not just the vacant two:
+            // `RETIRED_GENERATION` is a tombstone that is never issued, so it
+            // is as wrong on an occupied slot as it is on a free one.
             match (slot.value.is_some(), free.contains(&(index as u32))) {
+                // Occupied at the tombstone means an id was issued at a
+                // generation the arena never issues.
+                (true, _) if slot.generation == RETIRED_GENERATION => {
+                    return Err(CoreError::CorruptArena(defect::OCCUPIED_AT_RETIRED))
+                }
                 (true, true) => return Err(CoreError::CorruptArena(defect::OCCUPIED_BUT_FREE)),
                 (true, false) => len += 1,
                 // Vacant and free is legal only while the slot can still be
-                // allocated. A generation already at `u32::MAX` is retired
+                // allocated. A generation at `RETIRED_GENERATION` is retired
                 // (invariant 4), and a retired slot is never on the free list —
-                // honouring this one would issue an id at `u32::MAX`, from a
+                // honouring this one would issue an id at the tombstone, from a
                 // slot that is supposed to be out of circulation for good.
-                (false, true) if slot.generation == u32::MAX => {
+                (false, true) if slot.generation == RETIRED_GENERATION => {
                     return Err(CoreError::CorruptArena(defect::RETIRED_BUT_FREE))
                 }
                 // Vacant and not free is legal only for a retired slot.
-                (false, false) if slot.generation != u32::MAX => {
+                (false, false) if slot.generation != RETIRED_GENERATION => {
                     return Err(CoreError::CorruptArena(defect::VACANT_NOT_FREE))
                 }
                 (false, _) => {}
@@ -391,10 +483,21 @@ impl<T> GenerationalArena<T> {
     /// Test-only: drive an occupied slot's generation to an arbitrary value and
     /// return the id that now addresses it.
     ///
-    /// Exists so generation exhaustion can be tested at `u32::MAX` without four
-    /// billion insert/remove pairs.
+    /// Exists so generation exhaustion can be tested near `u32::MAX` without
+    /// four billion insert/remove pairs.
+    ///
+    /// Mints only generations an arena could have issued: `RETIRED_GENERATION`
+    /// is rejected, because an occupied slot at the tombstone is a state the
+    /// deserialization guard now calls corruption, and a test helper that can
+    /// build it would let a test assert on an arena that cannot exist. The
+    /// corrupt shapes are built from raw JSON instead, which is how they arrive
+    /// in reality.
     fn force_generation(&mut self, id: EntityId, generation: u32) -> EntityId {
         assert!(generation > 0, "generation 0 is never valid");
+        assert!(
+            generation <= LAST_ISSUABLE_GENERATION,
+            "generation u32::MAX is never issued"
+        );
         let slot = &mut self.slots[id.index() as usize];
         assert!(slot.value.is_some(), "slot is not occupied");
         assert_eq!(slot.generation, id.generation(), "stale id");
@@ -409,17 +512,25 @@ mod tests {
 
     /// Item 5 of T006a's test list, and invariant 4: a slot whose generation is
     /// exhausted is retired, not wrapped.
+    ///
+    /// The slot is forced to `LAST_ISSUABLE_GENERATION`, so the removal is the
+    /// one that would *reach* the tombstone. Forcing it to `u32::MAX` instead
+    /// tests a state no arena can be in and was how the runtime and the
+    /// deserialization guard came to disagree about this boundary.
     #[test]
     fn exhausted_generation_retires_the_slot_instead_of_wrapping() {
         let mut arena = GenerationalArena::new();
         let filler = arena.insert("filler");
         let doomed = arena.insert("doomed");
-        let doomed = arena.force_generation(doomed, u32::MAX);
+        let doomed = arena.force_generation(doomed, LAST_ISSUABLE_GENERATION);
 
         assert_eq!(arena.remove(doomed), Some("doomed"));
 
         // Not wrapped to 0, and not handed back to the free list.
-        assert_eq!(arena.slots[doomed.index() as usize].generation, u32::MAX);
+        assert_eq!(
+            arena.slots[doomed.index() as usize].generation,
+            RETIRED_GENERATION
+        );
         assert!(arena.free.is_empty());
         assert!(!arena.contains(doomed));
 
@@ -437,12 +548,48 @@ mod tests {
         assert!(arena.free.is_empty());
     }
 
-    /// `clear` retires an exhausted slot too — it shares the bump path.
+    /// The generation immediately below the tombstone is still issued, and
+    /// issuing it is what arms the *next* removal to retire the slot.
+    ///
+    /// This is the case that separates "retire on overflow" from "retire on
+    /// reaching the tombstone", and its absence is why the two readings could
+    /// coexist. It pins the boundary from the live side; the serde test below
+    /// pins the same boundary from the load side.
+    #[test]
+    fn the_last_issuable_generation_is_issued_and_then_retires_the_slot() {
+        let mut arena = GenerationalArena::new();
+        let doomed = arena.insert("doomed");
+        // One below the last issuable generation, so the removal below bumps
+        // *to* it rather than past it.
+        let doomed = arena.force_generation(doomed, LAST_ISSUABLE_GENERATION - 1);
+
+        assert_eq!(arena.remove(doomed), Some("doomed"));
+        // Still allocatable: the bump did not reach the tombstone.
+        assert_eq!(arena.free.iter().copied().collect::<Vec<_>>(), vec![0]);
+
+        let last = arena.insert("last");
+        assert_eq!(last.index(), 0);
+        assert_eq!(last.generation(), LAST_ISSUABLE_GENERATION);
+
+        // An arena holding an id at the last issuable generation is a legal
+        // arena, and must survive a save/load cycle.
+        let json = serde_json::to_string(&arena).expect("serialize");
+        let back: GenerationalArena<&str> = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(back, arena);
+
+        // And now the slot retires rather than issuing the tombstone.
+        assert_eq!(arena.remove(last), Some("last"));
+        assert_eq!(arena.slots[0].generation, RETIRED_GENERATION);
+        assert!(arena.free.is_empty());
+        assert_eq!(arena.insert("next").index(), 1, "retired slot was reused");
+    }
+
+    /// `clear` retires an exhausted slot too — it shares `retire_or_free`.
     #[test]
     fn clear_retires_an_exhausted_slot() {
         let mut arena = GenerationalArena::new();
         let doomed = arena.insert(1u32);
-        let doomed = arena.force_generation(doomed, u32::MAX);
+        let doomed = arena.force_generation(doomed, LAST_ISSUABLE_GENERATION);
         let ordinary = arena.insert(2u32);
 
         arena.clear();
@@ -452,7 +599,7 @@ mod tests {
         assert!(!arena.contains(ordinary));
         // Only the ordinary slot came back.
         assert_eq!(arena.free.iter().copied().collect::<Vec<_>>(), vec![1]);
-        assert_eq!(arena.slots[0].generation, u32::MAX);
+        assert_eq!(arena.slots[0].generation, RETIRED_GENERATION);
     }
 
     /// A retired slot survives a serde round trip as retired, not as free.
@@ -460,7 +607,7 @@ mod tests {
     fn retired_slot_round_trips() {
         let mut arena = GenerationalArena::new();
         let doomed = arena.insert(7u32);
-        let doomed = arena.force_generation(doomed, u32::MAX);
+        let doomed = arena.force_generation(doomed, LAST_ISSUABLE_GENERATION);
         arena.remove(doomed);
 
         let json = serde_json::to_string(&arena).expect("serialize");
@@ -468,7 +615,40 @@ mod tests {
 
         assert_eq!(back, arena);
         assert!(back.free.is_empty());
-        assert_eq!(back.slots[0].generation, u32::MAX);
+        assert_eq!(back.slots[0].generation, RETIRED_GENERATION);
+    }
+
+    /// Every arena a removal can produce is one the loader accepts.
+    ///
+    /// The regression guard for the disagreement this boundary had: `remove`
+    /// used to bump a slot at `u32::MAX - 1` to the tombstone *and* return it to
+    /// the free list, producing a live arena that serialized to JSON its own
+    /// `TryFrom` rejected as `RETIRED_BUT_FREE`.
+    #[test]
+    fn no_removal_produces_an_arena_that_fails_to_load() {
+        for generation in [
+            FIRST_GENERATION,
+            LAST_ISSUABLE_GENERATION - 1,
+            LAST_ISSUABLE_GENERATION,
+        ] {
+            for clear_instead in [false, true] {
+                let mut arena = GenerationalArena::new();
+                let id = arena.insert(1u32);
+                let id = arena.force_generation(id, generation);
+                if clear_instead {
+                    arena.clear();
+                } else {
+                    arena.remove(id);
+                }
+
+                let json = serde_json::to_string(&arena).expect("serialize");
+                let back: GenerationalArena<u32> =
+                    serde_json::from_str(&json).unwrap_or_else(|e| {
+                        panic!("generation {generation}, clear={clear_instead}: {json} -> {e}")
+                    });
+                assert_eq!(back, arena);
+            }
+        }
     }
 
     /// The deserialization guard is the only fallible operation in the crate as
@@ -485,6 +665,7 @@ mod tests {
                     defect::FREE_INDEX_RANGE,
                     defect::GENERATION_ZERO,
                     defect::OCCUPIED_BUT_FREE,
+                    defect::OCCUPIED_AT_RETIRED,
                     defect::RETIRED_BUT_FREE,
                     defect::VACANT_NOT_FREE,
                 ] {
@@ -518,10 +699,59 @@ mod tests {
         );
         // A retired slot handed back to the free list. Accepting it would let
         // the arena issue an id at generation `u32::MAX` from a slot invariant
-        // 4 has already taken out of circulation.
+        // 4 has already taken out of circulation. No removal can produce this
+        // shape any more (`no_removal_produces_an_arena_that_fails_to_load`),
+        // which is what makes rejecting it correct rather than contradictory.
         assert_eq!(
             load(r#"{"slots":[{"generation":4294967295,"value":null}],"free":[0]}"#),
             Err(CoreError::CorruptArena(defect::RETIRED_BUT_FREE))
         );
+        // An occupied slot at the tombstone: an id was issued at a generation
+        // the arena never issues. The fourth arm of the match, and the one that
+        // only exists because `u32::MAX` is now reserved rather than usable.
+        assert_eq!(
+            load(r#"{"slots":[{"generation":4294967295,"value":5}],"free":[]}"#),
+            Err(CoreError::CorruptArena(defect::OCCUPIED_AT_RETIRED))
+        );
+        // Unknown fields are refused at both levels of the shape.
+        assert!(
+            serde_json::from_str::<GenerationalArena<u32>>(
+                r#"{"slots":[{"generation":1,"value":5,"junk":0}],"free":[]}"#
+            )
+            .is_err(),
+            "an unknown slot field was accepted"
+        );
+        assert!(
+            serde_json::from_str::<GenerationalArena<u32>>(r#"{"slots":[],"free":[],"len":7}"#)
+                .is_err(),
+            "an unknown arena field was accepted"
+        );
+    }
+
+    /// `EntityId` is validated on the way in, so the "generations start at 1,
+    /// `u32::MAX` is never issued" invariant holds for ids that arrived from
+    /// outside as well as for ids an arena minted.
+    #[test]
+    fn deserialization_rejects_an_impossible_entity_id() {
+        fn load(json: &str) -> Result<EntityId, String> {
+            serde_json::from_str::<EntityId>(json).map_err(|e| e.to_string())
+        }
+
+        let ok = load(r#"{"index":3,"generation":2}"#).expect("a well-formed id");
+        assert_eq!((ok.index(), ok.generation()), (3, 2));
+
+        // The all-zero id a zeroed or `Default`-constructed struct would hold.
+        assert!(load(r#"{"index":0,"generation":0}"#)
+            .unwrap_err()
+            .contains(defect::ID_GENERATION_ZERO));
+        // The tombstone.
+        assert!(load(r#"{"index":0,"generation":4294967295}"#)
+            .unwrap_err()
+            .contains(defect::ID_GENERATION_RETIRED));
+        // Both boundaries of the issuable range still load.
+        assert!(load(r#"{"index":0,"generation":1}"#).is_ok());
+        assert!(load(r#"{"index":0,"generation":4294967294}"#).is_ok());
+        // And the shape is closed.
+        assert!(load(r#"{"index":0,"generation":1,"junk":2}"#).is_err());
     }
 }

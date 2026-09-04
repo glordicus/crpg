@@ -3,6 +3,22 @@ on:
   push:
     branches: [master]
   pull_request:
+  # The advisory database moves without this repository moving. Without a
+  # scheduled run, `cargo deny` only learns about a new RUSTSEC advisory in an
+  # existing dependency the next time somebody pushes, which on a solo project
+  # can be weeks. Weekly turns that into a notification.
+  schedule:
+    - cron: "0 6 * * 1"
+
+# Read-only by default; no job here writes to the repository.
+permissions:
+  contents: read
+
+# A new push to a branch supersedes the run already going on it. Master is
+# exempt: those runs are the record of what actually landed.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/master' }}
 
 jobs:
   check:
@@ -10,35 +26,60 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest]
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: Swatinem/rust-cache@v2
       - run: cargo fmt --all -- --check
-      - run: cargo clippy --workspace --all-targets -- -D warnings
-      - run: cargo test --workspace
+      # `--locked` on both: Cargo.lock is committed, and without this cargo is
+      # free to update it in place, so CI could pass against a dependency set
+      # that is not the one in the repository. For a project whose thesis is
+      # "same binary + same inputs => same result", the tested graph has to be
+      # the committed graph.
+      - run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - run: cargo test --workspace --locked
 
   deny:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+      # Pinned to an exact version on purpose, unlike the major-tag pins above:
+      # deny.toml is written against the cargo-deny 0.20.x config format, and
+      # the action is what chooses the cargo-deny version. A floating pin here
+      # would break the config, not just change a runner detail.
       - uses: EmbarkStudios/cargo-deny-action@v2.1.1
 
   lint-architecture:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+      # deps.py needs tomllib, which is 3.11+. Pinning the floor means the
+      # lints run on the oldest version they claim to support.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
       - run: python tools/lint/deps.py
 
   lint-determinism:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
       - run: python tools/lint/determinism.py
 
   # The lints above police the architecture; this job polices them. Without it
   # a lint can be silently defanged and every other job stays green.
   lint-selftest:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
       - run: python -m unittest discover -s tools/lint -p "test_*.py" -v

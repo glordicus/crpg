@@ -18,6 +18,9 @@ issues it — plus the crate-wide error type.
 
 `CoreError`, `Result<T>`, `EntityId`, `GenerationalArena<T>`.
 
+`CoreError` has two variants so far: `CorruptArena` and `InvalidEntityId`,
+both raised only at a deserialization boundary.
+
 - `EntityId::index() -> u32`, `EntityId::generation() -> u32`. Fields are
   private; only an arena mints an id.
 - `GenerationalArena<T>`: `new`, `with_capacity`, `insert`, `remove`, `get`,
@@ -42,8 +45,12 @@ most likely to break silently:
    not a stack, and why two arenas holding equal entries allocate identically.
 3. **Dead ids stay dead.** `remove` bumps the slot generation before the slot
    returns to the free list. A removed `EntityId` never resolves again.
-4. **Generations never wrap.** A slot that would exceed `u32::MAX` is retired
+4. **Generations never wrap, and `u32::MAX` is never issued.** It is a
+   reserved tombstone. A slot whose generation would *reach* it is retired
    permanently: vacant, not on the free list, generation pinned at `u32::MAX`.
+   Every issued generation is in `1..=u32::MAX - 1`, so "generation ==
+   `u32::MAX`" means retired with no qualifications — in the live arena and in
+   the deserialization guard alike.
 5. **`len` counts live entries**, not slots.
 
 Crate-wide:
@@ -54,11 +61,16 @@ Crate-wide:
   doc comment (spec §15.6).
 - No `HashMap`/`HashSet` — anywhere, including tests. No floats, no clock, no
   threads, no I/O, no randomness that is not seeded and explicit.
-- Deserialization is an untrusted-input boundary. An arena whose slots and free
-  list disagree is rejected with `CoreError::CorruptArena`, not loaded. That
-  includes a *retired* slot found on the free list: honouring it would issue an
-  id at generation `u32::MAX` from a slot invariant 4 has taken out of
-  circulation.
+- Deserialization is an untrusted-input boundary, at both levels. An arena
+  whose slots and free list disagree is rejected with `CoreError::CorruptArena`,
+  not loaded — including a *retired* slot found on the free list, and an
+  *occupied* slot sitting at the tombstone generation. An `EntityId` whose
+  generation is 0 or `u32::MAX` is rejected with `CoreError::InvalidEntityId`,
+  so the "generations start at 1, `u32::MAX` is never issued" invariant holds
+  for ids that arrived from outside as well as for ids an arena minted. Neither
+  check makes a deserialized id *authoritative*: a well-formed id still
+  addresses whatever now occupies its slot, and deciding whether a peer may name
+  it belongs to the layer that knows who the peer is.
 - The float and hash-map bans are lint-enforced here, not just documented:
   `tools/lint/determinism.py` covers `crpg-core` alongside `crpg-rules`.
 
@@ -96,15 +108,32 @@ ignored: it is the shrunk counterexample, and losing it loses the regression.
 - **Slot state is three-valued**, and the third is easy to miss: vacant-and-free
   (on the free list) versus vacant-and-retired (not on it, generation
   `u32::MAX`). Code that treats "vacant" as "reusable" reintroduces the wrapping
-  bug invariant 4 exists to prevent. The fourth combination — vacant, retired
-  *and* on the free list — is not a state, it is corruption, and the
-  `TryFrom<ArenaRepr<T>>` guard rejects it (`defect::RETIRED_BUT_FREE`). Both
-  vacant arms of that match need a generation check; only checking one is how
-  the hole got there the first time.
-- **Generation retirement is untestable from `tests/`.** Reaching `u32::MAX`
+  bug invariant 4 exists to prevent. Vacant-retired-*and*-free is not a state,
+  it is corruption (`defect::RETIRED_BUT_FREE`), and so is occupied-at-the-
+  tombstone (`defect::OCCUPIED_AT_RETIRED`). **All four arms of that match need
+  a generation check**, not just the vacant two.
+- **The exhaustion boundary is `u32::MAX - 1`, not `u32::MAX`,** and this is
+  where the runtime and the guard previously disagreed. `remove` used to bump a
+  slot at `u32::MAX - 1` to the tombstone *and* return it to the free list,
+  which produced a live arena that serialized to JSON its own `TryFrom` rejected
+  as corrupt, and which would then issue an id at `u32::MAX`. Retiring on
+  *reaching* the tombstone is what makes the two agree. `remove` and `clear`
+  share one `retire_or_free` helper so they cannot drift apart again, and
+  `no_removal_produces_an_arena_that_fails_to_load` is the regression guard:
+  every arena a removal can produce must be one the loader accepts. If you touch
+  the generation arithmetic, that test and
+  `the_last_issuable_generation_is_issued_and_then_retires_the_slot` are the two
+  that will notice.
+- **Generation retirement is untestable from `tests/`.** Reaching the tombstone
   honestly needs four billion insert/remove pairs, so it is a unit test in
   `src/entity.rs` using a `#[cfg(test)]` `force_generation` helper that reaches
-  private state. Do not "simplify" it into an integration test.
+  private state. Do not "simplify" it into an integration test. The helper mints
+  only generations an arena could have issued — it rejects `u32::MAX` — so a
+  test cannot accidentally assert on an arena that cannot exist. That is exactly
+  how the old test managed to cover retirement while missing the boundary: it
+  forced the slot to `u32::MAX` and removed, which tests a state no arena
+  reaches. Corrupt shapes are built from raw JSON instead, which is how they
+  arrive in reality.
 - **`EntityId::index()` is not identity.** It is reissued after a removal.
   Anything keying off the index alone is a latent aliasing bug; key off the
   whole id.

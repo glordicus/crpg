@@ -19,12 +19,33 @@ SPEC.loader.exec_module(deps)
 FORBID = "#![forbid(unsafe_code)]\n//! doc\n"
 
 
+def _entries(entries) -> str:
+    """Render one dependency table body.
+
+    An entry is either a bare crate name (a plain version requirement) or a
+    `(key, package)` pair, which renders as a renamed dependency.
+    """
+    out = ""
+    for entry in entries:
+        if isinstance(entry, tuple):
+            key, package = entry
+            out += f'{key} = {{ package = "{package}", version = "0.1" }}\n'
+        else:
+            out += f'{entry} = "0.1"\n'
+    return out
+
+
 def _make_tree(tmp: Path, crates: dict) -> None:
     """Create a temporary crate tree.
 
     `crates` maps a crate name to either a list of runtime deps, or a dict with
-    any of the keys `dependencies`, `dev-dependencies`, `build-dependencies`
-    and `root` (the text of src/lib.rs, defaulting to a compliant stub).
+    any of the keys `dependencies`, `dev-dependencies`, `build-dependencies`,
+    `target` (a `{cfg: {section: [deps]}}` mapping), `root` (the text of
+    src/lib.rs, defaulting to a compliant stub) and `bins` (a
+    `{filename: text}` mapping written under src/bin/).
+
+    A dependency entry may be a bare name or a `(key, package)` tuple, which
+    renders as `key = { package = "..." }` — the rename form.
     """
     for name, spec in crates.items():
         if isinstance(spec, list):
@@ -37,9 +58,13 @@ def _make_tree(tmp: Path, crates: dict) -> None:
             entries = spec.get(section, [])
             if not entries:
                 continue
-            sections += f"\n[{section}]\n"
-            for d in entries:
-                sections += f'{d} = "0.1"\n'
+            sections += f"\n[{section}]\n" + _entries(entries)
+
+        for cfg, cfg_sections in spec.get("target", {}).items():
+            for section, entries in cfg_sections.items():
+                if not entries:
+                    continue
+                sections += f"\n[target.{cfg}.{section}]\n" + _entries(entries)
 
         cargo = textwrap.dedent(f"""\
             [package]
@@ -51,6 +76,11 @@ def _make_tree(tmp: Path, crates: dict) -> None:
         (crate_dir / "src" / "lib.rs").write_text(
             spec.get("root", FORBID), encoding="utf-8"
         )
+
+        for filename, text in spec.get("bins", {}).items():
+            bin_dir = crate_dir / "src" / "bin"
+            bin_dir.mkdir(parents=True, exist_ok=True)
+            (bin_dir / filename).write_text(text, encoding="utf-8")
 
 
 class TreeCase(unittest.TestCase):
@@ -87,6 +117,13 @@ class TestCleanGraph(TreeCase):
             "crpg-core": {"dev-dependencies": ["proptest", "serde_json"]},
         }), [])
 
+    def test_legal_target_specific_dependency_is_fine(self):
+        """A platform-gated edge that the table allows is not a violation."""
+        self.assertEqual(self.all_violations({
+            "crpg-core": [],
+            "crpg-data": {"target": {"'cfg(windows)'": {"dependencies": ["crpg-core"]}}},
+        }), [])
+
 
 class TestCycle(TreeCase):
     def test_cycle(self):
@@ -95,6 +132,14 @@ class TestCycle(TreeCase):
             "crpg-data": ["crpg-core"],
         })
         self.assertTrue(any("cycle" in v for v in violations))
+
+    def test_target_specific_cycle(self):
+        """A cycle that only exists on one platform is still a cycle."""
+        violations = self.all_violations({
+            "crpg-core": ["crpg-data"],
+            "crpg-data": {"target": {"'cfg(windows)'": {"dependencies": ["crpg-core"]}}},
+        })
+        self.assertTrue(any("cycle" in v for v in violations), violations)
 
 
 class TestUpwardEdge(TreeCase):
@@ -126,6 +171,93 @@ class TestUpwardEdge(TreeCase):
             any("allowed-edges, build-dependencies" in v for v in violations),
             violations,
         )
+
+
+class TestTargetSpecificTables(TreeCase):
+    """A `[target.<cfg>.dependencies]` table is a dependency table.
+
+    Reading only the three top-level sections let a platform-gated edge past
+    every check, which is how an upward edge and a godot dependency could both
+    sit in a manifest with the lint green.
+    """
+
+    def test_upward_target_dependency(self):
+        violations = self.all_violations({
+            "crpg-core": {"target": {"'cfg(windows)'": {"dependencies": ["crpg-sim"]}}},
+            "crpg-sim": [],
+        })
+        self.assertTrue(
+            any("allowed-edges, target.cfg(windows).dependencies" in v
+                for v in violations),
+            violations,
+        )
+
+    def test_upward_target_dev_dependency(self):
+        violations = self.all_violations({
+            "crpg-core": {"target": {"'cfg(unix)'": {"dev-dependencies": ["crpg-sim"]}}},
+            "crpg-sim": [],
+        })
+        self.assertTrue(
+            any("target.cfg(unix).dev-dependencies" in v for v in violations),
+            violations,
+        )
+
+    def test_target_dependency_on_godot(self):
+        violations = self.all_violations({
+            "crpg-core": {"target": {"'cfg(windows)'": {"dependencies": ["godot"]}}},
+        })
+        self.assertTrue(
+            any("godot-only, target.cfg(windows).dependencies" in v
+                for v in violations),
+            violations,
+        )
+
+
+class TestRenamedDependencies(TreeCase):
+    """`package = "..."` names the crate; the table key is just a local alias.
+
+    Keying off the alias meant a one-line rename hid any edge from both the
+    layering and the godot rule.
+    """
+
+    def test_renamed_workspace_crate_is_still_an_edge(self):
+        violations = self.all_violations({
+            "crpg-core": {"dependencies": [("sim", "crpg-sim")]},
+            "crpg-sim": [],
+        })
+        self.assertTrue(
+            any("crpg-core -> crpg-sim" in v for v in violations), violations
+        )
+
+    def test_renamed_godot_is_still_godot(self):
+        violations = self.all_violations({
+            "crpg-core": {"dependencies": [("engine", "godot")]},
+        })
+        self.assertTrue(
+            any("godot-only" in v for v in violations), violations
+        )
+
+    def test_renamed_dependency_in_a_target_table(self):
+        """Both evasions at once, which is the shape that motivated the fix."""
+        violations = self.all_violations({
+            "crpg-core": {"target": {"'cfg(windows)'": {"dependencies": [("engine", "godot")]}}},
+        })
+        self.assertTrue(
+            any("godot-only, target.cfg(windows).dependencies" in v
+                for v in violations),
+            violations,
+        )
+
+    def test_workspace_inherited_dependency_keeps_its_key(self):
+        """`{ workspace = true }` has no `package`, so the key is the crate."""
+        tmp = self.tree({"crpg-data": {"dependencies": ["crpg-core"]}, "crpg-core": []})
+        (tmp / "crpg-data" / "Cargo.toml").write_text(
+            '[package]\nname = "crpg-data"\nversion = "0.1.0"\nedition = "2021"\n'
+            "\n[dependencies]\ncrpg-core = { workspace = true }\n",
+            encoding="utf-8",
+        )
+        internal, _ = deps.build_graph(tmp)
+        self.assertEqual(internal["crpg-data"]["dependencies"][1], {"crpg-core"})
 
 
 class TestUnknownCrate(TreeCase):
@@ -160,6 +292,22 @@ class TestGodotRule(TreeCase):
             "crpg-godot": {"dependencies": ["godot"], "root": "//! doc\n"},
         }), [])
 
+    def test_testkit_may_not_depend_on_the_godot_bridge(self):
+        """Crates dev-depend on crpg-testkit; it must not drag the engine in."""
+        violations = self.all_violations({
+            "crpg-testkit": ["crpg-godot"],
+            "crpg-godot": {"root": "//! doc\n"},
+        })
+        self.assertTrue(
+            any("crpg-testkit -> crpg-godot" in v for v in violations), violations
+        )
+
+    def test_testkit_may_depend_on_a_simulation_crate(self):
+        self.assertEqual(self.all_violations({
+            "crpg-testkit": ["crpg-sim"],
+            "crpg-sim": [],
+        }), [])
+
 
 class TestUnsafeRule(TreeCase):
     def test_missing_forbid_attribute_fails(self):
@@ -179,6 +327,21 @@ class TestUnsafeRule(TreeCase):
         (tmp / "crpg-core" / "src" / "lib.rs").unlink()
         violations = deps.check_unsafe(tmp)
         self.assertTrue(any("no crate root" in v for v in violations), violations)
+
+    def test_extra_binary_target_needs_its_own_attribute(self):
+        """`src/bin/*.rs` is a separate crate root; lib.rs does not cover it."""
+        violations = self.all_violations({
+            "crpg-cli": {"bins": {"helper.rs": "//! no forbid attribute\nfn main() {}\n"}},
+        })
+        self.assertTrue(
+            any("helper.rs" in v and "forbid(unsafe_code)" in v for v in violations),
+            violations,
+        )
+
+    def test_compliant_extra_binary_passes(self):
+        self.assertEqual(self.all_violations({
+            "crpg-cli": {"bins": {"helper.rs": FORBID + "fn main() {}\n"}},
+        }), [])
 
 
 if __name__ == "__main__":

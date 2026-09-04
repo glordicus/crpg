@@ -5,6 +5,11 @@ Updated: 2026-09-04
 ## Phase
 Phase 1 — core skeleton and test harness.
 
+## Branch state
+`master` and `origin/master` are both at ADR-0006 (`a51d4b5`). **T006a and the
+two review follow-ups are unmerged**, on branch `t006a-core-entity`. Merge that
+branch before starting T006b; `tasks/BACKLOG.md` marks them accordingly.
+
 ## Done
 - T004 workspace, 15 stub crates, CI green on Linux and Windows
 - T005 dependency-direction lint
@@ -16,19 +21,20 @@ Phase 1 — core skeleton and test harness.
   job in CI (pinned `EmbarkStudios/cargo-deny-action@v2.1.1`, cargo-deny
   0.20.2), and CI narrowed to push-on-master + pull-request so a PR branch no
   longer runs every job twice.
-- T006a `crpg-core`: `CoreError`, `EntityId`, `GenerationalArena<T>`, plus the
+- T006a (*unmerged, on `t006a-core-entity`*) `crpg-core`: `CoreError`,
+  `EntityId`, `GenerationalArena<T>`, plus the
   crate's `Cargo.toml`, module layout and `AGENTS.md`. Arena semantics are
   ADR-0006 Decision 1: generations start at 1, lowest-index slot reuse,
   ascending-index iteration as a documented invariant, and a slot whose
-  generation would overflow is retired rather than wrapped. The free list is
+  generation would overflow is retired rather than wrapped (the exact
+  boundary was corrected by review 2 below). The free list is
   serialized so a loaded arena allocates the ids the saved one would have, and
-  deserialization rejects an arena whose slots and free list disagree — the
-  only fallible operation in the crate so far, and the only `CoreError`
-  variant. 23 tests pass: 4 property tests (id-reuse safety, arena invariants,
+  deserialization rejects an arena whose slots and free list disagree. 23
+  tests pass: 4 property tests (id-reuse safety, arena invariants,
   iteration order, serde round trip including next-allocation), 18 unit tests
-  and a doctest.
-- Review follow-up (whole-project review, 2026-09-04). Closed the gaps it
-  found, none of which any gate was catching:
+  and a doctest. (Now 26: the boundary fixes below added three.)
+- Review follow-up 1 (whole-project review, 2026-09-04; *unmerged*). Closed the
+  gaps it found, none of which any gate was catching:
   - The arena's deserialization guard accepted a *retired* slot (generation
     `u32::MAX`) that was on the free list, and would then issue an id at
     `u32::MAX` from it. Now `CoreError::CorruptArena(RETIRED_BUT_FREE)`.
@@ -49,6 +55,54 @@ Phase 1 — core skeleton and test harness.
     pre-approved for nothing) and silenced the unused-allowance warnings.
   - Stripped the UTF-8 BOM from 14 tracked files; both lints now read
     `utf-8-sig` so a reintroduced BOM cannot mask a line-1 violation.
+- Review follow-up 2 (second whole-project review, 2026-09-04; *unmerged*).
+  Same shape as the first — every finding was a **partial enumeration**, a
+  check that knew about some of its cases and not the rest:
+  - **The arena's exhaustion boundary was off by one, and the runtime and the
+    loader disagreed about it.** `remove` bumped a slot at `u32::MAX - 1` to
+    `u32::MAX` *and* returned it to the free list, so a live arena could reach
+    the exact state its own `TryFrom` rejects as `RETIRED_BUT_FREE` — it
+    serialized to a save it could not load — and would then issue an id at
+    `u32::MAX`. `u32::MAX` is now a reserved tombstone that is never issued: a
+    slot retires on *reaching* it. `remove` and `clear` share one
+    `retire_or_free` so they cannot drift, and the guard gained a fourth defect
+    (`OCCUPIED_AT_RETIRED`) now that an occupied slot at the tombstone is also
+    impossible. The old test forced a slot to `u32::MAX` and removed, which
+    tests a state no arena reaches; the boundary case one below it was the
+    missing test, and is now two. Within ADR-0006 Decision 1 ("retired
+    permanently rather than wrapped"), which this pins the exact edge of rather
+    than reverses.
+  - **`deps.py` read three dependency tables and trusted table keys as crate
+    names.** A `[target.'cfg(windows)'.dependencies]` block was invisible, and
+    so was any renamed dependency (`x = { package = "godot" }`). Both together
+    put a godot dependency and an upward `crpg-core -> crpg-sim` edge in one
+    manifest with the lint green. It now walks every `[target.*]` block and
+    resolves `package` over the key, and names the offending table in the
+    violation. Also: `src/bin/*.rs` are crate roots for the unsafe check, and
+    `crpg-testkit` may no longer depend on `crpg-godot` (every crate dev-depends
+    on testkit).
+  - **`determinism.py` treated `///` as prose.** Doctests are compiled and run,
+    and `crpg-core/AGENTS.md` says the bans hold "anywhere, including tests" —
+    so a doctest using `HashMap` or `f64` passed. Fence bodies are scanned now
+    (`text`/`ignore` fences excepted), `/* */` block comments no longer produce
+    false positives, and an unterminated one is reported rather than silently
+    swallowing the rest of a file. That change immediately exposed a second
+    hole: `\bf(?:32|64)\b` never matched a suffixed literal like `1.5f64`,
+    because there is no word boundary after a digit.
+  - `EntityId` and `Slot` are now closed shapes (`deny_unknown_fields`), and an
+    `EntityId` deserializes only at a generation an arena issues —
+    `CoreError::InvalidEntityId`. That is a well-formedness check, not an
+    authority check; authority belongs to whoever knows the sender.
+  - CI: `--locked` on clippy and test (the committed lockfile was not the
+    tested one), a weekly schedule so a new advisory does not wait for a push,
+    `permissions`, `concurrency`, `timeout-minutes`, and a pinned Python 3.11
+    for the lint jobs (`tomllib`).
+  - `LICENSE-MIT` and `LICENSE-APACHE` added — the workspace has declared
+    `MIT OR Apache-2.0` since T004 with neither text shipped. `ADR-0001.md`
+    renamed to `0001-godot-pinned-not-forked.md`, matching every other ADR.
+  - Root `AGENTS.md` was weaker than CI: it asked for `clippy -p <crate>`
+    without `--all-targets`, and never mentioned the lints or their self-tests.
+  - Lint self-tests: 22 -> 49.
 - T001 GDExtension rendering spike — go (ADR-0003), 200 chars @ 231.7 fps,
   FFI cost 87.4 µs/frame, on the RTX 4060 laptop. Spike lives in
   `C:\CRPG\Dev\spike-gdext`, not this workspace.
@@ -124,3 +178,9 @@ the carried blockers and the throughput log.
 - Scaffolding from workflow plan §15 still missing, none of it blocking:
   `tools/preflight.ps1`, `docs/adr/0000-template.md`, per-crate `AGENTS.md`
   for every crate except `crpg-core` (written in T006a).
+- Spec §14 lists `docs/architecture/`, `docs/contracts/` and `docs/guides/`;
+  none exist. §15.6 says "if a crate has no architecture doc, it is not ready
+  for agent work", and T006a went ahead on `crpg-core` without one. **Decide
+  which way that rule goes** — write the per-crate architecture docs, or strike
+  the rule from the spec — rather than leaving it quietly unobserved. Not
+  blocking, but it is a stated gate the project is not keeping.

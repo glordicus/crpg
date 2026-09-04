@@ -4,8 +4,13 @@ The index of every numbered task. Derived from `docs/CRPG_ENGINE_SPEC.md` §24
 (the first eighteen tasks) and §19.1 (the small backlog). One line per task;
 detail lives in `tasks/TNNN.md`.
 
-Status: `done` · `next` · `open` · `blocked` · `human` (needs a person, not an
-agent).
+Status: `done` · `on branch` · `next` · `open` · `blocked` · `human` (needs a
+person, not an agent).
+
+`done` means merged to `master`. **`on branch` means the work is finished and
+green but not merged** — the Merged column names the branch instead of a date.
+Recording finished-but-unmerged work as `done` with a merge date is how the
+backlog and `docs/PROJECT_STATE.md` came to disagree with git.
 
 Numbering: spec §24 calls the spikes T1–T3 and the build tasks T4–T18. Task
 files are zero-padded (`T004.md`). A letter suffix means the spec's single task
@@ -31,8 +36,9 @@ ADR that motivated it.
 | T005 | done | 2026-09-03 | Dependency-direction lint |
 | T005b | done | 2026-09-03 | Determinism lint |
 | T005c | done | 2026-09-04 | `deny.toml` + `cargo deny` in CI; narrow CI to `push: master` |
-| T006a | done | 2026-09-04 | `CoreError`, `EntityId`, `GenerationalArena<T>` |
-| — | done | 2026-09-04 | Review follow-up: arena guard hole, lint gaps, lint self-tests in CI |
+| T006a | on branch | `t006a-core-entity` | `CoreError`, `EntityId`, `GenerationalArena<T>` |
+| — | on branch | `t006a-core-entity` | Review 1 follow-up: arena guard hole, lint gaps, lint self-tests in CI |
+| — | on branch | `t006a-core-entity` | Review 2 follow-up: arena exhaustion boundary, lint blind spots, CI `--locked`, licences |
 | **T006b** | **next** | — | `Fx16_16` fixed point |
 | T006c | open | — | `DeterministicRng`, PCG32 with named sub-streams |
 | T006d | open | — | `Tick`, `RoundCount`, `Ulid` |
@@ -103,6 +109,14 @@ Missing scaffolding from the workflow plan §15 checklist, none of it blocking:
 `AGENTS.md` beyond `crpg-core`'s, and a self-hosted runner for the slow CI
 layer.
 
+Also missing, and unlike the above it is a rule the project is not keeping
+rather than a convenience it has not built: spec §14's `docs/architecture/`,
+`docs/contracts/` and `docs/guides/`. §15.6 says "if a crate has no
+architecture doc, it is not ready for agent work", and T006a went ahead on
+`crpg-core` regardless. Either write them or strike the rule — an unobserved
+gate is worse than no gate, because it makes every other stated gate weaker
+evidence.
+
 ---
 
 ## Throughput
@@ -112,4 +126,4 @@ Record it here, one line per week.
 
 | Week ending | Merged | Notes |
 |---|---|---|
-| 2026-09-06 | 9 | T001–T005c plus T006a; the whole project to date. Cost per merged task not tracked yet. |
+| 2026-09-06 | 8 | T001–T005c; the whole project to date. T006a and its two review follow-ups are finished and green but sitting on `t006a-core-entity`, so they are not counted here — merged means merged. Cost per merged task not tracked yet. |

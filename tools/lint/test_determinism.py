@@ -92,6 +92,126 @@ FLOAT_SIM_SRC = """
 pub struct Transform { x: f64, y: f64 }
 """
 
+# A suffixed float literal. `\bf64\b` never matched this: the character before
+# `f` is a digit, so there is no word boundary there.
+FLOAT_LITERAL_SRC = """
+pub fn weight() -> i32 {
+    let scale = 1.5f64;
+    let _ = scale;
+    20
+}
+"""
+
+FLOAT_UNDERSCORE_LITERAL_SRC = """
+pub fn weight() -> i32 {
+    let scale = 1.0_f32;
+    let _ = scale;
+    20
+}
+"""
+
+# An identifier that merely ends in the banned token must not fire.
+FLOAT_LOOKALIKE_SRC = """
+pub fn f() {
+    let buf32 = [0u8; 32];
+    let _ = buf32;
+}
+"""
+
+# A doctest is compiled and executed by `cargo test`. crpg-core/AGENTS.md says
+# the bans hold "anywhere, including tests", so the fence body is code.
+DOCTEST_SRC = """
+/// Does a thing.
+///
+/// ```
+/// use std::collections::HashMap;
+/// let mut m = HashMap::new();
+/// m.insert("a", 1.5f64);
+/// ```
+pub fn documented() {}
+"""
+
+# Prose inside a doc comment, outside any fence, is not code.
+DOC_PROSE_SRC = """
+/// Callers must not reach for a HashMap here, and f64 is banned outright.
+///
+/// See the module docs.
+pub fn documented() {}
+"""
+
+# `text` and `ignore` fences are not compiled by rustdoc.
+DOCTEST_TEXT_FENCE_SRC = """
+/// An illustration, not code:
+///
+/// ```text
+/// HashMap<StatId, f64>
+/// ```
+pub fn documented() {}
+"""
+
+DOCTEST_IGNORE_FENCE_SRC = """
+/// ```ignore
+/// let m: HashMap<u32, f64> = HashMap::new();
+/// ```
+pub fn documented() {}
+"""
+
+# An inner doc comment carries doctests too.
+INNER_DOCTEST_SRC = """
+//! Module docs.
+//!
+//! ```
+//! let m = std::collections::HashMap::new();
+//! ```
+"""
+
+BLOCK_COMMENT_SRC = """
+/* HashMap and f64 are named here, but this is a comment. */
+pub fn f() { let x = 1; let _ = x; }
+"""
+
+MULTILINE_BLOCK_COMMENT_SRC = """
+/*
+ * HashMap iteration is banned.
+ * So is f64.
+ */
+pub fn f() { let x = 1; let _ = x; }
+"""
+
+NESTED_BLOCK_COMMENT_SRC = """
+/* outer /* inner mentions HashMap */ still a comment, f64 */
+pub fn f() { let x = 1; let _ = x; }
+"""
+
+# The block comment ends; code after it on the same line is still code.
+BLOCK_COMMENT_THEN_CODE_SRC = """
+pub fn f() {
+    /* a note */ let m = std::collections::HashMap::new();
+    let _ = m;
+}
+"""
+
+# A `/*` inside a string literal must not open a comment and hide the rest of
+# the file. This is the lint's dangerous direction, so it is pinned.
+BLOCK_COMMENT_IN_STRING_SRC = """
+pub fn f() {
+    let s = "/*";
+    let _ = s;
+}
+pub fn g() {
+    let m = std::collections::HashMap::new();
+    let _ = m;
+}
+"""
+
+UNTERMINATED_BLOCK_COMMENT_SRC = """
+pub fn f() { let x = 1; let _ = x; }
+/* this comment never closes, so everything after it would be swallowed
+pub fn g() {
+    let m = std::collections::HashMap::new();
+}
+"""
+
 # A crate root carrying a UTF-8 BOM, as several stubs in this repo do. The BOM
 # must not hide a violation on line 1.
 BOM_SRC = "﻿use std::collections::HashMap;\n"
@@ -132,6 +252,15 @@ class LintCase(unittest.TestCase):
             make_crate(root, crate, {fname: src})
             return rules_of(root)
 
+    def assert_clean(self, crate, src, why):
+        code, rules = self.lint_one(crate, src)
+        self.assertEqual(code, 0, f"{why}, got {rules}")
+
+    def assert_flags(self, crate, src, rule, why):
+        code, rules = self.lint_one(crate, src)
+        self.assertEqual(code, 1, why)
+        self.assertIn(rule, rules, why)
+
 
 class TestClean(LintCase):
     def test_clean_tree_passes(self):
@@ -169,17 +298,16 @@ class TestBannedPatterns(LintCase):
 
 class TestSkips(LintCase):
     def test_banned_pattern_in_comment_passes(self):
-        code, rules = self.lint_one("crpg-rules", COMMENT_SRC)
-        self.assertEqual(code, 0, f"comment should be skipped, got {rules}")
+        self.assert_clean("crpg-rules", COMMENT_SRC, "comment should be skipped")
 
     def test_escape_with_reason_passes(self):
-        code, rules = self.lint_one("crpg-rules", ESCAPE_OK_SRC)
-        self.assertEqual(code, 0, f"valid escape should pass, got {rules}")
+        self.assert_clean("crpg-rules", ESCAPE_OK_SRC, "valid escape should pass")
 
     def test_escape_without_reason_fails(self):
-        code, rules = self.lint_one("crpg-rules", ESCAPE_NO_REASON_SRC)
-        self.assertEqual(code, 1, "escape with no reason should fail")
-        self.assertIn("escape-no-reason", rules)
+        self.assert_flags(
+            "crpg-rules", ESCAPE_NO_REASON_SRC, "escape-no-reason",
+            "escape with no reason should fail",
+        )
 
 
 class TestFloatScope(LintCase):
@@ -191,25 +319,117 @@ class TestFloatScope(LintCase):
     """
 
     def test_float_in_core_fails(self):
-        code, rules = self.lint_one("crpg-core", FLOAT_SRC)
-        self.assertEqual(code, 1, "f64 in crpg-core should fail")
-        self.assertIn("no-float", rules)
+        self.assert_flags("crpg-core", FLOAT_SRC, "no-float", "f64 in crpg-core")
 
     def test_float_in_rules_fails(self):
-        code, rules = self.lint_one("crpg-rules", FLOAT_SRC)
-        self.assertEqual(code, 1, "f64 in crpg-rules should fail")
-        self.assertIn("no-float", rules)
+        self.assert_flags("crpg-rules", FLOAT_SRC, "no-float", "f64 in crpg-rules")
 
     def test_float_in_sim_passes(self):
-        code, rules = self.lint_one("crpg-sim", FLOAT_SIM_SRC)
-        self.assertEqual(code, 0, f"f64 in crpg-sim should pass, got {rules}")
+        self.assert_clean("crpg-sim", FLOAT_SIM_SRC, "f64 in crpg-sim is allowed")
+
+
+class TestFloatLiterals(LintCase):
+    """A suffixed float literal is a float.
+
+    `\\bf64\\b` matched only the type-annotation form: in `1.5f64` the character
+    before `f` is a digit, so the word boundary the rule relied on was not
+    there and the literal went through.
+    """
+
+    def test_suffixed_literal_fails(self):
+        self.assert_flags(
+            "crpg-rules", FLOAT_LITERAL_SRC, "no-float", "1.5f64 is a float",
+        )
+
+    def test_underscore_suffixed_literal_fails(self):
+        self.assert_flags(
+            "crpg-rules", FLOAT_UNDERSCORE_LITERAL_SRC, "no-float",
+            "1.0_f32 is a float",
+        )
+
+    def test_identifier_ending_in_the_token_passes(self):
+        self.assert_clean(
+            "crpg-rules", FLOAT_LOOKALIKE_SRC, "buf32 is not a float",
+        )
+
+
+class TestDoctests(LintCase):
+    """A doctest is compiled and run, so it is code the bans apply to."""
+
+    def test_doctest_body_is_scanned(self):
+        code, rules = self.lint_one("crpg-core", DOCTEST_SRC)
+        self.assertEqual(code, 1, "a doctest using HashMap and f64 should fail")
+        self.assertIn("no-hashmap", rules)
+        self.assertIn("no-float", rules)
+
+    def test_inner_doc_comment_doctest_is_scanned(self):
+        self.assert_flags(
+            "crpg-core", INNER_DOCTEST_SRC, "no-hashmap",
+            "a //! doctest is a doctest",
+        )
+
+    def test_doc_prose_outside_a_fence_is_not_scanned(self):
+        self.assert_clean(
+            "crpg-core", DOC_PROSE_SRC, "prose naming a banned type is not code",
+        )
+
+    def test_text_fence_is_not_scanned(self):
+        self.assert_clean(
+            "crpg-core", DOCTEST_TEXT_FENCE_SRC, "a ```text fence is not compiled",
+        )
+
+    def test_ignore_fence_is_not_scanned(self):
+        self.assert_clean(
+            "crpg-core", DOCTEST_IGNORE_FENCE_SRC,
+            "a ```ignore fence is not compiled",
+        )
+
+
+class TestBlockComments(LintCase):
+    """`/* ... */` is prose, and prose naming a banned type is not a violation."""
+
+    def test_single_line_block_comment_passes(self):
+        self.assert_clean(
+            "crpg-rules", BLOCK_COMMENT_SRC, "a block comment is not code",
+        )
+
+    def test_multiline_block_comment_passes(self):
+        self.assert_clean(
+            "crpg-rules", MULTILINE_BLOCK_COMMENT_SRC,
+            "a multi-line block comment is not code",
+        )
+
+    def test_nested_block_comment_passes(self):
+        self.assert_clean(
+            "crpg-rules", NESTED_BLOCK_COMMENT_SRC,
+            "Rust block comments nest",
+        )
+
+    def test_code_after_a_block_comment_is_still_scanned(self):
+        self.assert_flags(
+            "crpg-rules", BLOCK_COMMENT_THEN_CODE_SRC, "no-hashmap",
+            "closing a block comment must not disable the rest of the line",
+        )
+
+    def test_block_comment_opener_in_a_string_does_not_swallow_the_file(self):
+        self.assert_flags(
+            "crpg-rules", BLOCK_COMMENT_IN_STRING_SRC, "no-hashmap",
+            'a "/*" string literal must not open a comment',
+        )
+
+    def test_unterminated_block_comment_is_reported(self):
+        self.assert_flags(
+            "crpg-rules", UNTERMINATED_BLOCK_COMMENT_SRC,
+            "unterminated-block-comment",
+            "silently swallowing the rest of a file is the failure to avoid",
+        )
 
 
 class TestEncoding(LintCase):
     def test_bom_does_not_hide_a_violation_on_line_one(self):
-        code, rules = self.lint_one("crpg-rules", BOM_SRC)
-        self.assertEqual(code, 1, "BOM should not mask the first line")
-        self.assertIn("no-hashmap", rules)
+        self.assert_flags(
+            "crpg-rules", BOM_SRC, "no-hashmap", "BOM should not mask line 1",
+        )
 
 
 if __name__ == "__main__":

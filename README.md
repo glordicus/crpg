@@ -10,8 +10,9 @@ presentation host through GDExtension, and build a fully Godot-free simulation
 core. If Godot ever disappoints, replacing it is a client rewrite — the rules,
 campaign format, netcode, AI, and server are untouched.
 
-> **Status:** early development (Phase 1 — core skeleton and test harness). All
-> crates are currently stubs. See [docs/PROJECT_STATE.md](docs/PROJECT_STATE.md).
+> **Status:** early development (Phase 1 — core skeleton and test harness).
+> `crpg-core` has entity identity (`EntityId`, `GenerationalArena<T>`, `CoreError`);
+> every other crate is still a stub. See [docs/PROJECT_STATE.md](docs/PROJECT_STATE.md).
 
 ---
 
@@ -70,7 +71,7 @@ separate "single-player code path."
 
 - **Godot is pinned, not forked** — consumed as an unmodified presentation host
   via GDExtension. Any necessary engine patches stay a small patch queue against
-  a pinned tag. See [ADR-0001](docs/adr/ADR-0001.md).
+  a pinned tag. See [ADR-0001](docs/adr/0001-godot-pinned-not-forked.md).
 - **Rust below the presentation layer** — everything that runs authoritatively
   (core, rules, sim, server) is Rust with no Godot dependency. GDScript is
   reserved for client/editor view code *only*, because the server has no Godot
@@ -88,18 +89,23 @@ cargo build            # build the whole workspace
 cargo test --workspace # run all tests
 ```
 
-Before finishing work on a crate:
+Before finishing work on a crate — the same gates CI runs, so a clean run
+here is the whole check:
 
 ```sh
 cargo fmt --all
-cargo clippy -p <crate> -- -D warnings
+cargo clippy -p <crate> --all-targets -- -D warnings
 cargo test -p <crate>
+python tools/lint/deps.py
+python tools/lint/determinism.py
+python -m unittest discover -s tools/lint -p "test_*.py"
 ```
 
-CI (Linux + Windows, `.github/workflows/ci.yml`) runs `fmt`, `clippy`, and tests
-across the workspace, plus `cargo deny`, the dependency-direction architecture
-lint (`tools/lint/deps.py`), the determinism lint (`tools/lint/determinism.py`),
-and the self-tests for both lints:
+CI (`.github/workflows/ci.yml`) runs `fmt`, `clippy` and tests across the
+workspace on Linux and Windows, all with `--locked` so the tested dependency
+graph is the committed one. On Linux it also runs `cargo deny`, the
+dependency-direction architecture lint (`tools/lint/deps.py`), the determinism
+lint (`tools/lint/determinism.py`), and the self-tests for both lints:
 
 ```sh
 python -m unittest discover -s tools/lint -p "test_*.py"
@@ -113,7 +119,10 @@ These are non-negotiable and loaded by agents every session ([AGENTS.md](AGENTS.
   every other crate root carries `#![forbid(unsafe_code)]`, and the
   architecture lint fails if one does not.
 - Dependency direction: `core <- data <- rules <- sim <- {net, ai, script} <- server`.
-  Never import upward. Never create a cycle. Dev- and build-dependencies count.
+  Never import upward. Never create a cycle. Dev-, build- and target-specific
+  dependencies all count, and a renamed dependency is still the crate it names.
+  That sentence covers the spine; the complete, enforced edge list is the
+  `ALLOWED` table in [`tools/lint/deps.py`](tools/lint/deps.py).
 - No `HashMap`/`HashSet` in `crpg-core`, `crpg-rules` or `crpg-sim`; use
   `IndexMap`/`BTreeMap`. No `f32`/`f64` in `crpg-core` or `crpg-rules`; use
   integers or `Fx16_16`. `crpg-sim` may use `f32` for spatial positions only
@@ -131,4 +140,6 @@ These are non-negotiable and loaded by agents every session ([AGENTS.md](AGENTS.
 
 ## License
 
-`MIT OR Apache-2.0`, as declared in the workspace `Cargo.toml`.
+`MIT OR Apache-2.0`, at your option — as declared in the workspace
+`Cargo.toml` and enforced for dependencies by [`deny.toml`](deny.toml).
+Full texts: [LICENSE-MIT](LICENSE-MIT), [LICENSE-APACHE](LICENSE-APACHE).
