@@ -3,7 +3,7 @@
 use core::num::NonZeroU32;
 use std::collections::BTreeMap;
 
-use serde::{Deserialize, Serialize};
+use serde::{de::Error as _, Deserialize, Deserializer, Serialize};
 
 const PCG32_MULTIPLIER: u64 = 6_364_136_223_846_793_005;
 const STATE_DOMAIN: u64 = 0x243f_6a88_85a3_08d3;
@@ -13,10 +13,33 @@ const STREAM_DOMAIN: u64 = 0x1319_8a2e_0370_7344;
 ///
 /// The two private `u64` fields are the complete 16-byte stream state. Cloning
 /// or serializing a stream preserves the exact point in its sequence.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Pcg32 {
     state: u64,
     inc: u64,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Pcg32Repr {
+    state: u64,
+    inc: u64,
+}
+
+impl<'de> Deserialize<'de> for Pcg32 {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let repr = Pcg32Repr::deserialize(deserializer)?;
+        if repr.inc & 1 == 0 {
+            return Err(D::Error::custom("PCG32 stream increment must be odd"));
+        }
+        Ok(Self {
+            state: repr.state,
+            inc: repr.inc,
+        })
+    }
 }
 
 impl Pcg32 {
@@ -90,10 +113,37 @@ impl Pcg32 {
 ///
 /// Streams are created lazily from only the master seed and their name. The
 /// ordered map gives serialization a canonical order independent of first use.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct DeterministicRng {
     seed: u64,
     streams: BTreeMap<String, Pcg32>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct DeterministicRngRepr {
+    seed: u64,
+    streams: BTreeMap<String, Pcg32>,
+}
+
+impl<'de> Deserialize<'de> for DeterministicRng {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let repr = DeterministicRngRepr::deserialize(deserializer)?;
+        for (name, stream) in &repr.streams {
+            if stream.inc != derive_stream(repr.seed, name).inc {
+                return Err(D::Error::custom(format!(
+                    "PCG32 stream increment does not match seed and name {name:?}"
+                )));
+            }
+        }
+        Ok(Self {
+            seed: repr.seed,
+            streams: repr.streams,
+        })
+    }
 }
 
 impl DeterministicRng {

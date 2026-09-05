@@ -4,5 +4,6 @@
 //! replay and diff. No Godot, no rendering.
 
 fn main() {
-    println!("Hello, world!");
+    eprintln!("crpgc: not yet implemented");
+    std::process::exit(1);
 }

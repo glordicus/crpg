@@ -67,6 +67,20 @@ RULES = [
     # letter instead of a word boundary catches `1.5f64`, `1.0_f64` and
     # `to_f32`, while still leaving an identifier like `buf32` alone.
     ("no-float-crates", "no-float", re.compile(r"(?<![A-Za-z])f(?:32|64)\b")),
+    # Unsuffixed float literals: `1.5`, `0.5`, `1e3`, `1.0e-2`, `.5`.
+    # Requires a digit after `.` so `1..` (range) and `x.foo()` don't match.
+    # Each alternative requires a non-identifier character before it so a
+    # leading-dot literal `.0` in a tuple field access like `self.0` is not
+    # mistaken for a float. The leading-dot alternative also rejects a
+    # preceding `.` so a range with a multi-digit bound (`0..120`) does not
+    # surface its tail (`.120`) as a float.
+    ("no-float-crates", "no-float", re.compile(
+        r"(?:"
+        r"(?<![A-Za-z0-9_])[0-9]+\.[0-9]+(?:[eE][+-]?[0-9]+)?"
+        r"|(?<![A-Za-z0-9_])[0-9]+[eE][+-]?[0-9]+"
+        r"|(?<![A-Za-z0-9_])(?<!\.)\.[0-9]+(?:[eE][+-]?[0-9]+)?"
+        r")\b"
+    )),
 ]
 
 ESCAPE_RE = re.compile(r"// determinism-ok:\s*(\S.*)?\s*$")
@@ -121,6 +135,59 @@ def strip_block_comments(lines):
     return out, depth > 0
 
 
+def mask_string_literals(line):
+    """Replace the contents of string and char literals with spaces.
+
+    Preserves column positions so that trailing ``// determinism-ok:`` markers
+    and banned-token searches still work at the right offsets.  This prevents
+    a banned token inside a string from being flagged (strings are not code)
+    and prevents a ``// determinism-ok:`` marker inside a string from
+    suppressing violations on the same line.
+    """
+    chars = list(line)
+    i = 0
+    n = len(chars)
+    while i < n:
+        c = chars[i]
+        if c == '"':
+            # Regular string literal.  Mask the content between quotes.
+            i += 1
+            while i < n:
+                if chars[i] == '\\':
+                    # Skip the escaped character – do not let \" end the
+                    # string, and do not let the escaped char be masked.
+                    chars[i] = ' '
+                    i += 1
+                    if i < n:
+                        chars[i] = ' '
+                        i += 1
+                elif chars[i] == '"':
+                    i += 1
+                    break
+                else:
+                    chars[i] = ' '
+                    i += 1
+        elif c == "'":
+            # Character literal: 'x', '\n', '\'', etc.
+            i += 1
+            while i < n:
+                if chars[i] == '\\':
+                    chars[i] = ' '
+                    i += 1
+                    if i < n:
+                        chars[i] = ' '
+                        i += 1
+                elif chars[i] == "'":
+                    i += 1
+                    break
+                else:
+                    chars[i] = ' '
+                    i += 1
+        else:
+            i += 1
+    return ''.join(chars)
+
+
 def fence_is_compiled(info: str) -> bool:
     """True if rustdoc compiles a fenced doc block with this info string."""
     tags = {t.strip().lower() for t in info.replace("`", "").split(",")}
@@ -172,11 +239,15 @@ def check_file(crate_name, path):
         if line == "\x00unterminated":
             found.append((lineno, "unterminated-block-comment", line))
             continue
+        # Strings and char literals are not code: mask their contents so a
+        # banned token inside a string is not flagged and a `// determinism-ok:`
+        # marker inside a string cannot suppress rules on this line.
+        masked = mask_string_literals(line)
         # Skip escapes, requiring a non-empty reason.
-        m = ESCAPE_RE.search(line)
+        m = ESCAPE_RE.search(masked)
         if m:
             if not (m.group(1) or "").strip():
-                found.append((lineno, "escape-no-reason", line))
+                found.append((lineno, "escape-no-reason", masked))
             continue
         applies = ("both",)
         if crate_name in ("crpg-core", "crpg-rules"):
@@ -184,8 +255,8 @@ def check_file(crate_name, path):
         for scope, rule_name, pattern in RULES:
             if scope not in applies:
                 continue
-            if pattern.search(line):
-                found.append((lineno, rule_name, line))
+            if pattern.search(masked):
+                found.append((lineno, rule_name, masked))
     return found
 
 

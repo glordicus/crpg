@@ -84,7 +84,10 @@ jobs:
   # The lints above police the architecture; this job polices them. Without it
   # a lint can be silently defanged and every other job stays green.
   lint-selftest:
-    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7

@@ -40,7 +40,7 @@ govern it (as links), and what consumers inherit from it.
 
 | Crate | Doc | Governed by |
 |---|---|---|
-| `crpg-core` | [crpg-core.md](crpg-core.md) | ADR-0006 |
+| `crpg-core` | [crpg-core.md](crpg-core.md) | ADR-0006, ADR-0007 |
 | `crpg-data` | due with T010 | spec §4 |
 | `crpg-rules` | due with T014 | spec §3, §15.1 |
 | `crpg-sim` | due with T007 | spec §2.4 |

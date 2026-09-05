@@ -155,6 +155,26 @@ fn generated_ranges_have_expected_distribution() {
 }
 
 #[test]
+fn range_generation_rejects_values_below_the_threshold() {
+    let mut ranged = DeterministicRng::from_seed(0x0123_4567_89ab_cdef);
+    let mut raw = ranged.clone();
+    let bound = NonZeroU32::new(0x8000_0001).unwrap();
+
+    assert_eq!(ranged.stream("golden").next_u32(), 3_204_935_638);
+    assert_eq!(raw.stream("golden").next_u32(), 3_204_935_638);
+    assert_eq!(raw.stream("golden").next_u32(), 183_514_434);
+    let accepted = raw.stream("golden").next_u32();
+    assert_eq!(
+        ranged.stream("golden").gen_range_u32(bound),
+        accepted % bound
+    );
+    assert_eq!(
+        ranged.stream("golden").next_u32(),
+        raw.stream("golden").next_u32()
+    );
+}
+
+#[test]
 fn inclusive_i32_ranges_cover_boundaries_without_panicking() {
     let mut rng = DeterministicRng::from_seed(123);
     for _ in 0..1_000 {
@@ -195,6 +215,18 @@ fn serde_resumes_the_exact_sequence() {
     let json = serde_json::to_string(&owner).unwrap();
     let restored: DeterministicRng = serde_json::from_str(&json).unwrap();
     assert_eq!(restored, owner);
+}
+
+#[test]
+fn serde_rejects_invalid_stream_parameters() {
+    assert!(serde_json::from_str::<Pcg32>(r#"{"state":0,"inc":0}"#).is_err());
+
+    let mut owner = DeterministicRng::from_seed(314_159);
+    owner.stream("combat").next_u32();
+    let mut value = serde_json::to_value(owner).unwrap();
+    let inc = value["streams"]["combat"]["inc"].as_u64().unwrap();
+    value["streams"]["combat"]["inc"] = serde_json::Value::from(inc ^ 2);
+    assert!(serde_json::from_value::<DeterministicRng>(value).is_err());
 }
 
 #[test]

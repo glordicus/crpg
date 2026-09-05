@@ -6,19 +6,20 @@ Updated: 2026-09-05
 Phase 1 — core skeleton and test harness.
 
 ## Branch state
-T006b and T006c are merged to `master`. T006d is complete and green in the
+T006b-T006d are merged to local `master`. T006e is complete and green in the
 uncommitted `master` working tree. The Done history below is merged work only.
 
 ## Complete in working tree
-- T006d `crpg-core`: `Tick(u64)` and `RoundCount(u32)` provide explicit
-  saturating/checked simulation-time arithmetic with transparent integer serde
-  and no seconds conversion. `Ulid(u128)` masks caller-supplied 48-bit timestamp
-  and 80-bit randomness fields, uses canonical uppercase Crockford base32 for
-  display and string serde, accepts lowercase plus `I`/`L`/`O` aliases, and
-  reports length, character and overflow parse failures separately. Seventeen
-  new tests, including six property tests, bring core to 74 tests including its
-  doctest. All required local gates pass; no proptest regression file was
-  produced. Not committed or merged.
+- T006e `crpg-core`: `Interner` assigns dense `u32` handles in first-intern
+  order and serializes as an ordered string list. `Interners` owns distinct stat
+  and tag namespaces whose private-field `StatId`/`TagId` handles are
+  runtime-only and deliberately do not implement serde or `Display`. A full
+  review made equality order-sensitive and made deserialization reject duplicate
+  strings, then hardened RNG deserialization against invalid stream parameters
+  and added a direct rejection-sampling regression. Nine interner tests and two
+  RNG regressions bring core to 85 tests including its doctest. All required
+  local gates pass; no proptest regression file was produced. Not committed or
+  merged.
 
 ## Done
 - T004 workspace, 15 stub crates, CI green on Linux and Windows
@@ -131,6 +132,15 @@ uncommitted `master` working tree. The Done history below is merged work only.
   golden vector, independence/order properties, range bounds and distribution,
   and serde continuation. All required local gates pass: 57 core tests
   including the doctest, both lints, and all 49 lint self-tests.
+- T006d `crpg-core`: `Tick(u64)` and `RoundCount(u32)` provide explicit
+  saturating/checked simulation-time arithmetic with transparent integer serde
+  and no seconds conversion. `Ulid(u128)` masks caller-supplied 48-bit timestamp
+  and 80-bit randomness fields, uses canonical uppercase Crockford base32 for
+  display and string serde, accepts lowercase plus `I`/`L`/`O` aliases, and
+  reports length, character and overflow parse failures separately. Seventeen
+  tests, including six property tests, brought core to 74 tests including its
+  doctest. All required local gates passed; no proptest regression file was
+  produced.
 - T001 GDExtension rendering spike — go (ADR-0003), 200 chars @ 231.7 fps,
   FFI cost 87.4 µs/frame, on the RTX 4060 laptop. Spike lives in
   `C:\CRPG\Dev\spike-gdext`, not this workspace.
@@ -161,9 +171,6 @@ uncommitted `master` working tree. The Done history below is merged work only.
   Spike lives in `C:\CRPG\Dev\spike-quic`, not this workspace.
 
 ## Next
-- T006e crpg-core: `Interner`, `StatId`, `TagId`. T006a laid down the crate's
-  `Cargo.toml`, module layout and `AGENTS.md`; T006d has extended them in the
-  current working tree.
 - T007 crpg-sim: World and ComponentStore. Its entity arena is
   `GenerationalArena<EntityMeta>` from T006a, already property-tested — not a
   second implementation.
@@ -189,6 +196,8 @@ the carried blockers and the throughput log.
   generational arena in core, `Fx16_16` saturating/floor, PCG32 sub-streams in
   a `BTreeMap`, interned ids runtime-only (persist the string). Authorises
   `proptest` + `serde_json` as workspace dev-dependencies.
+- ADR-0007 reserves `u32::MAX` as the arena's never-issued retirement
+  tombstone, superseding ADR-0006 Decision 1's original overflow boundary.
 - Godot pinned at 4.7.2
 - Toolchain pinned at rustc 1.98.0
 

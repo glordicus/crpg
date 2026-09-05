@@ -2,11 +2,12 @@
 
 The primitives every other crate may depend on, and nothing else.
 
-**State:** entity identity, the crate error type, fixed-point maths, the
-named-stream RNG, simulation time counters and authored-object ULIDs exist
-(T006a-T006d). The interner is designed but unwritten (T006e).
+**State:** the core primitives are complete (T006a-T006e): entity identity, the
+crate error type, fixed-point maths, the named-stream RNG, simulation time
+counters, authored-object ULIDs, and runtime string interning.
 
-Decisions: [ADR-0006](../adr/0006-crpg-core-primitives.md).
+Decisions: [ADR-0006](../adr/0006-crpg-core-primitives.md) and
+[ADR-0007](../adr/0007-reserved-arena-generation.md).
 Working contract: [`crates/crpg-core/AGENTS.md`](../../crates/crpg-core/AGENTS.md).
 
 ---
@@ -16,7 +17,8 @@ Working contract: [`crates/crpg-core/AGENTS.md`](../../crates/crpg-core/AGENTS.m
 `crpg-core` is the bottom of the dependency graph. It depends on no workspace
 crate — `tools/lint/deps.py` enforces that with an empty allowed-edge set, the
 only crate in the table that has one — and its only external dependencies are
-`serde` and `thiserror`, plus `proptest` and `serde_json` as dev-only.
+`indexmap`, `serde` and `thiserror`, plus `proptest` and `serde_json` as
+dev-only.
 
 Everything above it inherits its semantics, which is why the semantics were
 settled in an ADR before any of it was written. Four consumers in particular:
@@ -64,13 +66,13 @@ src/
   error.rs    CoreError, Result<T>
   entity.rs   EntityId, GenerationalArena<T>          (T006a)
   fixed.rs    Fx16_16                                (T006b)
+  intern.rs   Interner, Interners, StatId, TagId     (T006e)
   rng.rs      DeterministicRng, Pcg32                (T006c)
   time.rs     Tick, RoundCount                       (T006d)
   ulid.rs     Ulid                                   (T006d)
 ```
 
-`lib.rs` stays a declaration file on purpose. T006e adds its module and
-crate-root exports there.
+`lib.rs` stays a declaration and crate-root export file on purpose.
 
 `Ulid` is a separate module from `Tick` and `RoundCount` deliberately: they are
 all "time" colloquially, but `Tick` and `RoundCount` are simulation counters
@@ -151,6 +153,12 @@ The stream map is a `BTreeMap`, so its serialized order depends on names rather
 than first-use history. Serialization includes each stream's complete 16-byte
 state and resumes at the identical next draw.
 
+Deserialization treats snapshots as untrusted input. A standalone `Pcg32`
+must have the odd increment required by PCG, and each stream owned by a
+`DeterministicRng` must have the increment derived from that object's seed and
+the stream name. Stream state itself may be any `u64`: the LCG transition is a
+permutation, so every state is reachable.
+
 Stream derivation is length-domain-separated: the name length and each byte are
 mixed with the master seed through SplitMix64, then distinct fixed domains
 produce the PCG state and odd stream increment. This mapping and PCG32-XSH-RR's
@@ -177,19 +185,23 @@ integer order, displayed lexical order and authored JSON order agree. Parsing
 also accepts lowercase and Crockford's `I`/`L`/`O` aliases while reporting
 length, character and 128-bit overflow failures separately.
 
-## Planned modules, and what is already fixed about them
+### `intern.rs`
 
-Design settled in ADR-0006; the remaining code is T006e.
+`Interner` uses an insertion-ordered `IndexSet<String>`, whose position is the
+dense `u32` handle and whose serde form is the ordered sequence of strings.
+Repeated interning returns the existing position without changing the table;
+resolution, iteration and equality use the same first-intern order. Loading
+rejects duplicate strings rather than collapsing them and silently renumbering
+later handles.
 
-- **`Interner`, `StatId`, `TagId`** — dense `u32` handles that are
-  **runtime-only**: they have no `Serialize`/`Deserialize` impl at all. Ids are
-  assigned in first-intern order, so persisting them as integers would mean
-  inserting one stat declaration silently renumbers every save. Making the type
-  unserializable turns a year-two data-corruption bug into a compile error. The
-  persisted form is always the string.
+`Interners` owns independent stat and tag tables and wraps their indices in
+private-field `StatId` and `TagId` newtypes. Those handle types are deliberately
+not serializable or displayable: they are meaningful only with the table that
+issued them. Persistence resolves and stores the string, as fixed by
+[ADR-0006 Decision 4](../adr/0006-crpg-core-primitives.md#decision-4--interned-ids-are-runtime-only-handles-the-persisted-form-is-always-the-string).
 
 ## Open
 
-- Nothing blocking. T006e completes the planned core primitives.
+- Nothing blocking. T006e completed the planned core primitives.
 - `blake3` will be needed for `state_hash` (T008) and is not yet authorised as
   a dependency — ADR-0006 says so explicitly and does not decide it.

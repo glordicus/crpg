@@ -11,8 +11,10 @@ core. If Godot ever disappoints, replacing it is a client rewrite — the rules,
 campaign format, netcode, AI, and server are untouched.
 
 > **Status:** early development (Phase 1 — core skeleton and test harness).
-> `crpg-core` has entity identity (`EntityId`, `GenerationalArena<T>`, `CoreError`);
-> every other crate is still a stub. See [docs/PROJECT_STATE.md](docs/PROJECT_STATE.md).
+> `crpg-core` has the planned Phase 1 primitives: entity identity, fixed-point
+> math, named deterministic RNG streams, time counters, ULIDs, runtime string
+> interning, and core errors. Every other crate is still a stub. See
+> [docs/PROJECT_STATE.md](docs/PROJECT_STATE.md).
 
 ---
 

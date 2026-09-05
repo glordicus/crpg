@@ -1,7 +1,8 @@
 # crpg-core — agent contract
 
-Scope note: this file describes the crate **as it exists after T006d**. T006e
-(the interner) extends it. Do not document a type before its task lands.
+Scope note: this file describes the finished core-primitives crate after
+T006a-T006e. Later work consumes these types; it does not move higher-level
+rules or simulation state into this crate.
 
 ## Purpose
 
@@ -15,15 +16,16 @@ The primitives every other crate is allowed to depend on, and nothing else.
 sim <- ...`) and depends on no workspace crate. Everything here is
 deterministic by construction.
 
-Today that is entity identity — `EntityId` and the `GenerationalArena<T>` that
-issues it — plus `Fx16_16` fixed-point arithmetic, `DeterministicRng` with named
-PCG32 streams, unit-safe simulation counters, authored-object ULIDs, and the
-crate-wide error type.
+That is entity identity — `EntityId` and the `GenerationalArena<T>` that issues
+it — plus `Fx16_16` fixed-point arithmetic, `DeterministicRng` with named PCG32
+streams, unit-safe simulation counters, authored-object ULIDs, runtime string
+interning, and the crate-wide error type.
 
 ## Public API  (changing this requires an ADR)
 
 `CoreError`, `Result<T>`, `EntityId`, `GenerationalArena<T>`, `Fx16_16`,
-`DeterministicRng`, `Pcg32`, `Tick`, `RoundCount`, `Ulid`.
+`DeterministicRng`, `Pcg32`, `Tick`, `RoundCount`, `Ulid`, `Interner`,
+`Interners`, `StatId`, `TagId`.
 
 `CoreError`: `CorruptArena` and `InvalidEntityId` guard deserialization;
 `InvalidFixedPoint` rejects malformed, inexact or out-of-range decimals. The
@@ -35,9 +37,10 @@ three ULID variants distinguish wrong length, invalid characters and overflow.
   `get_mut`, `contains`, `len`, `is_empty`, `clear`, `iter`, `iter_mut`,
   `ids`, `Default`, `Serialize`/`Deserialize`.
 
-Semantics come from **ADR-0006 Decision 1**. Changing any of them is an ADR,
-not a refactor: `crpg-sim`'s `World` (T007), `state_hash` (T008) and every
-saved campaign inherit them.
+Semantics come from **ADR-0006 Decision 1**, with its exhaustion boundary
+superseded by **ADR-0007**. Changing any of them is an ADR, not a refactor:
+`crpg-sim`'s `World` (T007), `state_hash` (T008) and every saved campaign
+inherit them.
 
 ### Fixed-point contract (T006b, ADR-0006 Decision 2)
 
@@ -71,6 +74,9 @@ named streams; they do not construct or retain free-standing streams.
    stream, in canonical name order. Do not replace it with insertion ordering.
 4. `gen_range_u32` uses rejection sampling; `gen_range_i32` handles the full
    inclusive `i32` domain. The latter returns `lo` without drawing for `lo > hi`.
+5. Deserialization rejects an even PCG increment and any owned stream whose
+   increment does not match its master seed and name. Loaded state must obey the
+   same stream-selection invariant as newly constructed state.
 
 `tests/rng.rs` pins the first 16 outputs for the recorded seed and stream name.
 Never re-bless that golden vector casually: first establish why changing every
@@ -87,6 +93,22 @@ ULID display is the canonical 26-character uppercase Crockford base32 form.
 Parsing is case-insensitive, accepts `I`/`L` as `1` and `O` as `0`, and rejects
 wrong lengths, alphabet violations and values wider than 128 bits distinctly.
 Serde uses that string form, not the underlying `u128`.
+
+### Interner contract (T006e, ADR-0006 Decision 4)
+
+`intern::{Interner, Interners, StatId, TagId}` are re-exported at the crate
+root. `Interner` assigns dense `u32` handles in first-intern order and
+serializes as that ordered string list. `Interners` owns separate stat and tag
+tables so crossing namespaces is a type error.
+
+Order is part of `Interner` equality because it determines every handle.
+Deserialization rejects duplicate strings rather than collapsing the list and
+renumbering later handles.
+
+The handle newtypes expose only `index`; their fields are private and they have
+no raw constructors. They are runtime-only and deliberately have no
+`Serialize`, `Deserialize`, or `Display` implementation. Persistence resolves
+the handle through the issuing interner and stores the string.
 
 ## Invariants
 
@@ -133,9 +155,9 @@ Crate-wide:
 
 ## Allowed dependencies
 
-`serde` (derive), `thiserror`. Dev-only: `proptest`, `serde_json` — both
-authorised by ADR-0006 and **neither may become a normal dependency**. No
-workspace crate, ever. Anything else needs approval.
+`indexmap` (serde), `serde` (derive), `thiserror`. Dev-only: `proptest`,
+`serde_json` — both authorised by ADR-0006 and **neither may become a normal
+dependency**. No workspace crate, ever. Anything else needs approval.
 
 ## Definition of done for any change
 
@@ -153,6 +175,8 @@ ignored: it is the shrunk counterexample, and losing it loses the regression.
 
 ## Known traps
 
+- **`StatId`/`TagId` must never gain `Serialize`, `Deserialize` or `Display`.**
+  Persist the string, resolved through the `Interner`. See ADR-0006 Decision 4.
 - **`len` is not serialized.** It is recomputed by `TryFrom<ArenaRepr<T>>` on
   deserialization so it cannot disagree with the slots. If you add a field to
   the arena, decide deliberately whether it belongs in the serialized form, and

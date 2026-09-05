@@ -268,13 +268,15 @@ impl<T> GenerationalArena<T> {
         }
     }
 
-    /// Removes the entry `id` addresses and returns it, or `None` if `id` is
-    /// dead or was never issued by this arena.
+    /// Removes the entry `id` addresses and returns it, or `None` if `id` does
+    /// not match a live slot.
     ///
     /// The slot's generation is bumped before the slot returns to the free
     /// list, so `id` — and every copy of it anywhere — is dead from here on. If
     /// the bump would reach [`RETIRED_GENERATION`], the slot is retired instead
-    /// of reused: it is never allocated again.
+    /// of reused: it is never allocated again. The id does not encode arena
+    /// provenance, so an id from another arena with the same index and
+    /// generation can match; authority checks belong above this allocator.
     pub fn remove(&mut self, id: EntityId) -> Option<T> {
         let slot = self.slots.get_mut(id.index as usize)?;
         if slot.generation != id.generation {

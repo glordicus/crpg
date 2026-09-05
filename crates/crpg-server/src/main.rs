@@ -4,5 +4,6 @@
 //! and persistence. The only binary that owns world state.
 
 fn main() {
-    println!("Hello, world!");
+    eprintln!("crpg-server: not yet implemented");
+    std::process::exit(1);
 }

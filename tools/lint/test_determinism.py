@@ -6,6 +6,7 @@ violations. Run: python -m unittest discover -s tools/lint -p "test_*.py"
 """
 
 import pathlib
+import re
 import subprocess
 import sys
 import tempfile
@@ -107,6 +108,92 @@ pub fn weight() -> i32 {
     let scale = 1.0_f32;
     let _ = scale;
     20
+}
+"""
+
+# An unsuffixed float literal defaults to f64 and must be caught too.
+UNSUFFIXED_FLOAT_SRC = """
+pub fn weight() -> i32 {
+    let x = 1.5;
+    let _ = x;
+    20
+}
+"""
+
+EXPONENT_FLOAT_SRC = """
+pub fn weight() -> i32 {
+    let x = 1e3;
+    let _ = x;
+    20
+}
+"""
+
+# An unsuffixed float inside a string literal is not code.
+FLOAT_IN_STRING_SRC = """
+pub fn f() {
+    let s = "value is 1.5";
+    let _ = s;
+}
+"""
+
+# A range and a member access on a bare integer are not floats.
+RANGE_AND_MEMBER_SRC = """
+pub fn f() {
+    let n = 1;
+    for i in 1..10 {
+        let _ = i;
+    }
+    let _ = n;
+    x::foo().bar();
+}
+"""
+
+RANGE_ONLY_SRC = """
+pub fn f() {
+    let n = 1;
+    let _ = n;
+    for i in 0..n {
+        let _ = i;
+    }
+}
+"""
+
+PLAIN_INT_SRC = """
+pub fn f() {
+    let x = 9;
+    let _ = x;
+}
+"""
+
+INT_METHOD_SRC = """
+pub fn f() {
+    let x = 1u32.pow(2);
+    let _ = x;
+}
+"""
+
+HEX_INT_SRC = """
+pub fn f() {
+    let x = 0x1F;
+    let _ = x;
+}
+"""
+
+CHAR_LITERAL_SRC = """
+pub fn f() {
+    let c = 'a';
+    let _ = c;
+}
+"""
+
+# A `// determinism-ok:` marker inside a string literal must not let a real
+# violation on the same line escape.
+ESCAPE_INSIDE_STRING_SRC = """
+pub fn f() {
+    let s = "// determinism-ok: not a real escape";
+    let _ = s;
+    let mut h = std::collections::HashMap::new();
+    let _ = h;
 }
 """
 
@@ -232,14 +319,29 @@ def run_lint(root):
     )
 
 
+# A violation line is `VIOLATION <path>:<lineno> <rule> <rest...>`.  The path
+# may contain spaces (e.g. `C:\Users\Jane Doe\...`), so it is matched against
+# the `:<lineno> ` suffix rather than whitespace-splitting the whole line.
+VIOLATION_RE = re.compile(r"^VIOLATION.*?:(\d+)\s+(\S+)")
+
+
+def _rule_from_violation(line):
+    """Extract the rule name from a single `VIOLATION <path>:<lineno> <rule>` line."""
+    m = VIOLATION_RE.match(line)
+    if m:
+        return m.group(2)
+    return None
+
+
 def rules_of(root):
     """Return (exit_code, [rule_name, ...]) for a lint run over `root`."""
     proc = run_lint(root)
     rules = []
     for line in proc.stdout.splitlines():
-        parts = line.split()
-        if len(parts) >= 3 and parts[0] == "VIOLATION":
-            rules.append(parts[2])
+        if line.startswith("VIOLATION"):
+            rule = _rule_from_violation(line)
+            if rule is not None:
+                rules.append(rule)
     return proc.returncode, rules
 
 
@@ -351,6 +453,78 @@ class TestFloatLiterals(LintCase):
         self.assert_clean(
             "crpg-rules", FLOAT_LOOKALIKE_SRC, "buf32 is not a float",
         )
+
+
+class TestUnsupportedFloatLiterals(LintCase):
+    """An unsuffixed float literal defaults to f64 and is banned in crpg-rules."""
+
+    def test_float_literal_unsuffixed_fails(self):
+        self.assert_flags(
+            "crpg-rules", UNSUFFIXED_FLOAT_SRC, "no-float", "1.5 is a float",
+        )
+
+    def test_float_literal_exponent_fails(self):
+        self.assert_flags(
+            "crpg-rules", EXPONENT_FLOAT_SRC, "no-float", "1e3 is a float",
+        )
+
+    def test_float_literal_in_string_pass(self):
+        self.assert_clean(
+            "crpg-rules", FLOAT_IN_STRING_SRC, '"1.5" inside a string is not code',
+        )
+
+    def test_plain_integer_stays_clean(self):
+        self.assert_clean(
+            "crpg-rules", PLAIN_INT_SRC, "a plain integer is not a float",
+        )
+
+    def test_integer_with_method_stays_clean(self):
+        self.assert_clean(
+            "crpg-rules", INT_METHOD_SRC, "1u32.pow(2) is not a float",
+        )
+
+    def test_range_and_member_access_pass(self):
+        self.assert_clean(
+            "crpg-rules", RANGE_AND_MEMBER_SRC,
+            "a range and a member access are not floats",
+        )
+
+    def test_range_only_pass(self):
+        self.assert_clean(
+            "crpg-rules", RANGE_ONLY_SRC,
+            "0..n and 1..10 ranges are not floats",
+        )
+
+    def test_multi_digit_range_bound_pass(self):
+        self.assert_clean(
+            "crpg-rules",
+            'pub fn f() { for _ in 0..120 { } }\n',
+            "0..120 is a range, not a float",
+        )
+
+    def test_hex_int_pass(self):
+        self.assert_clean(
+            "crpg-rules", HEX_INT_SRC, "0x1F is an integer, not a float",
+        )
+
+    def test_char_literal_pass(self):
+        self.assert_clean(
+            "crpg-rules", CHAR_LITERAL_SRC, "'a' is a char, not a float",
+        )
+
+
+class TestStringEscapeMasking(LintCase):
+    """A `// determinism-ok:` marker inside a string must not suppress rules."""
+
+    def test_escape_marker_inside_string_does_not_suppress(self):
+        self.assert_flags(
+            "crpg-rules", ESCAPE_INSIDE_STRING_SRC, "no-hashmap",
+            "a marker inside a string literal must not disable the line",
+        )
+
+    def test_rule_from_violation_handles_spaced_path(self):
+        synthetic = "VIOLATION C:\\Users\\Jane Doe\\x.rs:3 no-hashmap std"
+        self.assertEqual(_rule_from_violation(synthetic), "no-hashmap")
 
 
 class TestDoctests(LintCase):

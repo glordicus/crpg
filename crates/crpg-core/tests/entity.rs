@@ -334,21 +334,25 @@ fn a_stale_id_never_resolves_against_the_reissued_slot() {
 }
 
 #[test]
-fn an_id_from_another_arena_does_not_resolve() {
+fn foreign_ids_have_no_provenance_and_out_of_range_ids_do_not_resolve() {
     let mut a = GenerationalArena::new();
     let mut b = GenerationalArena::new();
-    let _ = a.insert("a0");
-    let foreign = b.insert("b0");
+    let local = a.insert("a0");
+    let same_shape = b.insert("b0");
 
     // Same index and generation, different arena: the type cannot detect this
-    // and does not claim to. What it must not do is panic or index out of
-    // bounds when the index is beyond the arena's slots.
+    // and does not claim to. Authority checks belong to higher layers.
+    assert_eq!(same_shape, local);
+    assert_eq!(a.get(same_shape), Some(&"a0"));
+
+    // A foreign id beyond the local slot range is simply absent.
+    let out_of_range = b.insert("b1");
     let mut small = GenerationalArena::new();
-    assert_eq!(small.get(foreign), None);
-    assert_eq!(small.get_mut(foreign), None);
-    assert_eq!(small.remove(foreign), None);
-    assert!(!small.contains(foreign));
     let _: EntityId = small.insert("only");
+    assert_eq!(small.get(out_of_range), None);
+    assert_eq!(small.get_mut(out_of_range), None);
+    assert_eq!(small.remove(out_of_range), None);
+    assert!(!small.contains(out_of_range));
 }
 
 #[test]
