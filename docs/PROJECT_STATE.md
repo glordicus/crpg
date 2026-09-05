@@ -1,15 +1,13 @@
 # Project state
 
-Updated: 2026-09-04
+Updated: 2026-09-05
 
 ## Phase
 Phase 1 — core skeleton and test harness.
 
 ## Branch state
-Clean: everything below is merged to `master`, nothing is sitting on a branch.
-When that stops being true, say so here and mark the task `on branch` in
-`tasks/BACKLOG.md` — this section exists because the file once reported three
-merged commits that were not.
+T006b is merged to `master`. The security-review draft `tasks/S001.md` is now
+scheduled as an open backlog item; the Done history below is merged work.
 
 ## Done
 - T004 workspace, 15 stub crates, CI green on Linux and Windows
@@ -103,6 +101,16 @@ merged commits that were not.
   - Root `AGENTS.md` was weaker than CI: it asked for `clippy -p <crate>`
     without `--all-targets`, and never mentioned the lints or their self-tests.
   - Lint self-tests: 22 -> 49.
+- T006b `crpg-core`: `Fx16_16`, a 16-fractional-bit integer fixed point.
+  Saturating (never panicking or wrapping) `+ - * /` plus checked and
+  saturating variants, floor division for either divisor sign, `floor`/`ceil`/
+  `round` (round halves away from zero) and `abs` with `MIN.abs() == MAX`.
+  `Display` prints the shortest exact decimal; `FromStr` rejects inexact or
+  out-of-range input rather than rounding; serde is the raw `i32`. 19 new tests
+  (10 property tests) prove arithmetic against i64 oracles, so no floats
+  anywhere; 45 core tests pass in debug and release. Review found only doc
+  gaps (rounding-mode wording, Display/FromStr impl docs), fixed before
+  landing.
 - T001 GDExtension rendering spike — go (ADR-0003), 200 chars @ 231.7 fps,
   FFI cost 87.4 µs/frame, on the RTX 4060 laptop. Spike lives in
   `C:\CRPG\Dev\spike-gdext`, not this workspace.
@@ -132,13 +140,11 @@ merged commits that were not.
   decision before crpg-net's snapshot channel depends on raw datagrams.
   Spike lives in `C:\CRPG\Dev\spike-quic`, not this workspace.
 
-## In progress
-- (nothing — see Next)
-
 ## Next
-- T006b-e crpg-core: `Fx16_16`, `DeterministicRng`, `Tick`/`RoundCount`/`Ulid`,
-  the interner. T006a laid down the crate's `Cargo.toml`, module layout and
-  `AGENTS.md`, so b-e are independent of each other; two can run in parallel
+- T006c next, then T006d-e crpg-core: `DeterministicRng`,
+  `Tick`/`RoundCount`/`Ulid`, the interner. T006a laid down the crate's
+  `Cargo.toml`, module layout and `AGENTS.md`; the remaining tasks are independent
+  of each other and two can run in parallel
   worktrees and collide only on a `pub mod` line in `lib.rs`. Each extends
   `CoreError` and `crpg-core/AGENTS.md` with its own section.
 - T007 crpg-sim: World and ComponentStore. Its entity arena is

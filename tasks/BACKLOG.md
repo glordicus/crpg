@@ -39,8 +39,8 @@ ADR that motivated it.
 | T006a | done | 2026-09-04 | `CoreError`, `EntityId`, `GenerationalArena<T>` |
 | — | done | 2026-09-04 | Review 1 follow-up: arena guard hole, lint gaps, lint self-tests in CI |
 | — | done | 2026-09-04 | Review 2 follow-up: arena exhaustion boundary, lint blind spots, CI `--locked`, licences |
-| **T006b** | **next** | — | `Fx16_16` fixed point |
-| T006c | open | — | `DeterministicRng`, PCG32 with named sub-streams |
+| T006b | done | 2026-09-05 | `Fx16_16` fixed point: saturating integer arithmetic, floor division, exact decimal display/parse, raw-integer serde |
+| **T006c** | **next** | — | `DeterministicRng`, PCG32 with named sub-streams |
 | T006d | open | — | `Tick`, `RoundCount`, `Ulid` |
 | T006e | open | — | `Interner`, `StatId`, `TagId` |
 | T007 | open | — | `crpg-sim`: `World`, `ComponentStore<T>`, spawn/despawn/query |
@@ -52,6 +52,14 @@ established `Cargo.toml`, the module layout and `crpg-core/AGENTS.md`. b–e are
 independent of each other and two can run in parallel worktrees; they collide
 only on one `pub mod` line in `lib.rs`, and each extends `CoreError` and
 `crpg-core/AGENTS.md` with its own section.
+
+## Security hardening
+
+From the security review, not spec §24. Detail lives in `tasks/S001.md`.
+
+| Task | Status | Merged | Summary |
+|---|---|---|---|
+| S001 | open | — | Fork-PR guard over `tools/lint/` and workflows, `build.rs` ban, secret scan, self-hosted-runner rule, `yanked = "deny"` |
 
 ## Phase 2 — Campaign data format
 
@@ -139,4 +147,4 @@ Record it here, one line per week.
 
 | Week ending | Merged | Notes |
 |---|---|---|
-| 2026-09-06 | 9 | T001–T005c plus T006a; the whole project to date, all on `master`. Two review follow-ups merged alongside T006a and are not counted, being fixes rather than numbered tasks. Cost per merged task not tracked yet. |
+| 2026-09-06 | 10 | T001–T005c plus T006a and T006b; the whole project to date, all on `master`. Two review follow-ups merged alongside T006a and are not counted, being fixes rather than numbered tasks. Cost per merged task not tracked yet. |
