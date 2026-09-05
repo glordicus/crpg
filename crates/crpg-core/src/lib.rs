@@ -10,14 +10,17 @@
 //! hash-map iteration.
 //!
 //! The crate holds entity identity ([`EntityId`] and [`GenerationalArena`]),
-//! fixed-point arithmetic ([`Fx16_16`]), and the crate-wide [`CoreError`].
-//! `DeterministicRng`, `Tick`, `RoundCount`, `Ulid` and the string interner
-//! arrive in T006c-T006e (ADR-0006).
+//! fixed-point arithmetic ([`Fx16_16`]), deterministic pseudo-randomness
+//! ([`DeterministicRng`] and [`Pcg32`]), and the crate-wide [`CoreError`].
+//! `Tick`, `RoundCount`, `Ulid` and the string interner arrive in T006d-T006e
+//! (ADR-0006).
 
 pub mod entity;
 pub mod error;
 pub mod fixed;
+pub mod rng;
 
 pub use entity::{EntityId, GenerationalArena};
 pub use error::{CoreError, Result};
 pub use fixed::Fx16_16;
+pub use rng::{DeterministicRng, Pcg32};

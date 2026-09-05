@@ -2,9 +2,9 @@
 
 The primitives every other crate may depend on, and nothing else.
 
-**State:** entity identity, the crate error type and fixed-point maths exist
-(T006a-T006b). The RNG, time types and interner are designed but unwritten
-(T006c-T006e).
+**State:** entity identity, the crate error type, fixed-point maths and the
+named-stream RNG exist (T006a-T006c). Time types and the interner are designed
+but unwritten (T006d-T006e).
 
 Decisions: [ADR-0006](../adr/0006-crpg-core-primitives.md).
 Working contract: [`crates/crpg-core/AGENTS.md`](../../crates/crpg-core/AGENTS.md).
@@ -64,16 +64,16 @@ src/
   error.rs    CoreError, Result<T>
   entity.rs   EntityId, GenerationalArena<T>          (T006a)
   fixed.rs    Fx16_16                                (T006b)
+  rng.rs      DeterministicRng, Pcg32                (T006c)
 ```
 
-`lib.rs` stays a declaration file on purpose. T006c-T006e each add their modules
-and extend `CoreError`, so they collide on a single `pub mod` line and can run
-in parallel worktrees.
+`lib.rs` stays a declaration file on purpose. T006d-T006e each add their modules
+and crate-root exports, so they collide on the declaration block and can run in
+parallel worktrees.
 
-Planned, as the task files specify them: `rng.rs` (`DeterministicRng`, `Pcg32`,
-T006c), `time.rs` (`Tick`,
-`RoundCount`) and `ulid.rs` (`Ulid`) — T006d writes both — and `intern.rs`
-(`Interner`, `StatId`, `TagId`, T006e).
+Planned, as the task files specify them: `time.rs` (`Tick`, `RoundCount`) and
+`ulid.rs` (`Ulid`) — T006d writes both — and `intern.rs` (`Interner`, `StatId`,
+`TagId`, T006e).
 
 `Ulid` is a separate module from `Tick` and `RoundCount` deliberately: they are
 all "time" colloquially, but `Tick` and `RoundCount` are simulation counters
@@ -147,16 +147,24 @@ before binary scaling to avoid overflowing its intermediate. A human-friendly
 serde adapter still belongs to `crpg-data`, not core. Arithmetic and conversion
 properties live in `tests/fixed.rs` and need no floating-point oracle.
 
+### `rng.rs`
+
+`DeterministicRng` owns the master seed and every lazily-created `Pcg32` stream.
+The stream map is a `BTreeMap`, so its serialized order depends on names rather
+than first-use history. Serialization includes each stream's complete 16-byte
+state and resumes at the identical next draw.
+
+Stream derivation is length-domain-separated: the name length and each byte are
+mixed with the master seed through SplitMix64, then distinct fixed domains
+produce the PCG state and odd stream increment. This mapping and PCG32-XSH-RR's
+output transform are replay contracts pinned by `tests/rng.rs`; range reduction
+uses rejection sampling. Callers select streams by stable subsystem names so
+adding draws in one system cannot shift another system's sequence.
+
 ## Planned modules, and what is already fixed about them
 
-Design settled in ADR-0006; the code is T006c-T006e.
+Design settled in ADR-0006; the remaining code is T006d-T006e.
 
-- **`DeterministicRng`** — PCG32, one serializable object owning all its
-  streams in a `BTreeMap<String, Pcg32>`. One object rather than free-standing
-  sub-streams so that `World` cannot forget to serialize one; PCG rather than
-  xoshiro because independent streams are in the algorithm rather than
-  approximated by seed-mixing. Range generation is rejection-sampled, not
-  modulo.
 - **`Tick`, `RoundCount`, `Ulid`** — sim time, never wall-clock seconds. A
   "6-second round" is a ruleset constant, not an engine one (spec §2.5).
 - **`Interner`, `StatId`, `TagId`** — dense `u32` handles that are
@@ -168,6 +176,6 @@ Design settled in ADR-0006; the code is T006c-T006e.
 
 ## Open
 
-- Nothing blocking. Remaining T006c-T006e tasks are independent of each other.
+- Nothing blocking. Remaining T006d-T006e tasks are independent of each other.
 - `blake3` will be needed for `state_hash` (T008) and is not yet authorised as
   a dependency — ADR-0006 says so explicitly and does not decide it.

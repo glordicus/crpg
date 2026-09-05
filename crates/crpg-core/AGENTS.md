@@ -1,8 +1,8 @@
 # crpg-core — agent contract
 
-Scope note: this file describes the crate **as it exists after T006b**.
-T006c-T006e (`DeterministicRng`, `Tick`/`RoundCount`/`Ulid`, the
-interner) each extend it. Do not document a type before its task lands.
+Scope note: this file describes the crate **as it exists after T006c**.
+T006d-T006e (`Tick`/`RoundCount`/`Ulid`, the interner) each extend it. Do not
+document a type before its task lands.
 
 ## Purpose
 
@@ -17,11 +17,13 @@ sim <- ...`) and depends on no workspace crate. Everything here is
 deterministic by construction.
 
 Today that is entity identity — `EntityId` and the `GenerationalArena<T>` that
-issues it — plus `Fx16_16` fixed-point arithmetic and the crate-wide error type.
+issues it — plus `Fx16_16` fixed-point arithmetic, `DeterministicRng` with named
+PCG32 streams, and the crate-wide error type.
 
 ## Public API  (changing this requires an ADR)
 
-`CoreError`, `Result<T>`, `EntityId`, `GenerationalArena<T>`, `Fx16_16`.
+`CoreError`, `Result<T>`, `EntityId`, `GenerationalArena<T>`, `Fx16_16`,
+`DeterministicRng`, `Pcg32`.
 
 `CoreError`: `CorruptArena` and `InvalidEntityId` guard deserialization;
 `InvalidFixedPoint` rejects malformed, inexact or out-of-range decimals.
@@ -53,6 +55,25 @@ Keep intermediate arithmetic in `i64`. Do not replace floor division with
 `div_euclid`: `EPSILON / from_int(-3)` must be `-EPSILON`, not zero. `Sum`
 saturates at each step in iterator order, so regrouping it changes results.
 `tests/fixed.rs` pins these behaviours with integer-only property tests.
+
+### RNG contract (T006c, ADR-0006 Decision 3)
+
+`rng::DeterministicRng` and `rng::Pcg32` are re-exported at the crate root.
+`DeterministicRng` is the simulation's only randomness source. Callers use
+named streams; they do not construct or retain free-standing streams.
+
+1. PCG32-XSH-RR and stream derivation are replay and save-format contracts.
+   Changing either changes every later draw and requires an ADR.
+2. A stream derives only from the master seed and its name. Creation order and
+   draws from other streams cannot affect its sequence.
+3. The owning `BTreeMap` is serialized so save/load resumes every touched
+   stream, in canonical name order. Do not replace it with insertion ordering.
+4. `gen_range_u32` uses rejection sampling; `gen_range_i32` handles the full
+   inclusive `i32` domain. The latter returns `lo` without drawing for `lo > hi`.
+
+`tests/rng.rs` pins the first 16 outputs for the recorded seed and stream name.
+Never re-bless that golden vector casually: first establish why changing every
+random decision and replay in the project is intended.
 
 ## Invariants
 

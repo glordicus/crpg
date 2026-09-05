@@ -6,8 +6,20 @@ Updated: 2026-09-05
 Phase 1 — core skeleton and test harness.
 
 ## Branch state
-T006b is merged to `master`. The security-review draft `tasks/S001.md` is now
-scheduled as an open backlog item; the Done history below is merged work.
+T006b is merged to `master`. T006c is complete and green in the `master`
+working tree but intentionally uncommitted. The Done history below remains
+merged work only.
+
+## Working tree
+- T006c `crpg-core`: `DeterministicRng` owns lazily-created named PCG32-XSH-RR
+  streams in canonical `BTreeMap` order. Stream parameters derive only from the
+  master seed and length-separated name bytes through SplitMix64, so first-use
+  order and draws from other streams cannot shift a sequence. Range generation
+  is rejection-sampled, inclusive signed ranges cover the full `i32` domain,
+  and serde resumes every stream exactly. Twelve new tests pin the 16-value
+  golden vector, independence/order properties, range bounds and distribution,
+  and serde continuation. All required local gates pass: 57 core tests
+  including the doctest, both lints, and all 49 lint self-tests.
 
 ## Done
 - T004 workspace, 15 stub crates, CI green on Linux and Windows
@@ -141,12 +153,10 @@ scheduled as an open backlog item; the Done history below is merged work.
   Spike lives in `C:\CRPG\Dev\spike-quic`, not this workspace.
 
 ## Next
-- T006c next, then T006d-e crpg-core: `DeterministicRng`,
-  `Tick`/`RoundCount`/`Ulid`, the interner. T006a laid down the crate's
-  `Cargo.toml`, module layout and `AGENTS.md`; the remaining tasks are independent
-  of each other and two can run in parallel
-  worktrees and collide only on a `pub mod` line in `lib.rs`. Each extends
-  `CoreError` and `crpg-core/AGENTS.md` with its own section.
+- T006d next, then T006e crpg-core: `Tick`/`RoundCount`/`Ulid`, then the
+  interner. T006a laid down the crate's `Cargo.toml`, module layout and
+  `AGENTS.md`; the remaining tasks are independent and collide in `lib.rs` and
+  the crate documentation when run in parallel worktrees.
 - T007 crpg-sim: World and ComponentStore. Its entity arena is
   `GenerationalArena<EntityMeta>` from T006a, already property-tested — not a
   second implementation.
