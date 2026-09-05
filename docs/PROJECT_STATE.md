@@ -6,20 +6,8 @@ Updated: 2026-09-05
 Phase 1 — core skeleton and test harness.
 
 ## Branch state
-T006b is merged to `master`. T006c is complete and green in the `master`
-working tree but intentionally uncommitted. The Done history below remains
-merged work only.
-
-## Working tree
-- T006c `crpg-core`: `DeterministicRng` owns lazily-created named PCG32-XSH-RR
-  streams in canonical `BTreeMap` order. Stream parameters derive only from the
-  master seed and length-separated name bytes through SplitMix64, so first-use
-  order and draws from other streams cannot shift a sequence. Range generation
-  is rejection-sampled, inclusive signed ranges cover the full `i32` domain,
-  and serde resumes every stream exactly. Twelve new tests pin the 16-value
-  golden vector, independence/order properties, range bounds and distribution,
-  and serde continuation. All required local gates pass: 57 core tests
-  including the doctest, both lints, and all 49 lint self-tests.
+T006b and T006c are merged to `master`. The Done history below is merged work
+only.
 
 ## Done
 - T004 workspace, 15 stub crates, CI green on Linux and Windows
@@ -123,6 +111,15 @@ merged work only.
   anywhere; 45 core tests pass in debug and release. Review found only doc
   gaps (rounding-mode wording, Display/FromStr impl docs), fixed before
   landing.
+- T006c `crpg-core`: `DeterministicRng` owns lazily-created named PCG32-XSH-RR
+  streams in canonical `BTreeMap` order. Stream parameters derive only from the
+  master seed and length-separated name bytes through SplitMix64, so first-use
+  order and draws from other streams cannot shift a sequence. Range generation
+  is rejection-sampled, inclusive signed ranges cover the full `i32` domain,
+  and serde resumes every stream exactly. Twelve new tests pin the 16-value
+  golden vector, independence/order properties, range bounds and distribution,
+  and serde continuation. All required local gates pass: 57 core tests
+  including the doctest, both lints, and all 49 lint self-tests.
 - T001 GDExtension rendering spike — go (ADR-0003), 200 chars @ 231.7 fps,
   FFI cost 87.4 µs/frame, on the RTX 4060 laptop. Spike lives in
   `C:\CRPG\Dev\spike-gdext`, not this workspace.
