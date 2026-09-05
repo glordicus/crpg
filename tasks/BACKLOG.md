@@ -41,16 +41,16 @@ ADR that motivated it.
 | — | done | 2026-09-04 | Review 2 follow-up: arena exhaustion boundary, lint blind spots, CI `--locked`, licences |
 | T006b | done | 2026-09-05 | `Fx16_16` fixed point: saturating integer arithmetic, floor division, exact decimal display/parse, raw-integer serde |
 | T006c | done | 2026-09-05 | `DeterministicRng`, PCG32 with named sub-streams |
-| **T006d** | **next** | — | `Tick`, `RoundCount`, `Ulid` |
-| T006e | open | — | `Interner`, `StatId`, `TagId` |
+| T006d | on branch | master (working tree) | `Tick`, `RoundCount`, `Ulid` |
+| **T006e** | **next** | — | `Interner`, `StatId`, `TagId` |
 | T007 | open | — | `crpg-sim`: `World`, `ComponentStore<T>`, spawn/despawn/query |
 | T008 | open | — | `state_hash` + the fixed-step tick loop |
 | T009 | open | — | Replay record/playback harness |
 
 T006a–e are spec §24's single T6, split per ADR-0006. T006a established
 `Cargo.toml`, the module layout and `crpg-core/AGENTS.md`; T006b and T006c are
-merged. T006d–e are independent and can run in parallel worktrees; they collide
-in `lib.rs` and the crate documentation.
+merged. T006d is complete and green in the uncommitted working tree. T006e is
+next and will extend `lib.rs` and the crate documentation again.
 
 ## Security hardening
 

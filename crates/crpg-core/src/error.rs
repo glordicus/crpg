@@ -2,13 +2,14 @@
 //!
 //! Every fallible operation in `crpg-core` reports through [`CoreError`], so a
 //! consumer matches one enum rather than a per-module family. The enum is
-//! `#[non_exhaustive]`: T006b–T006e (`Fx16_16`, the RNG, `Ulid`, the interner)
-//! add their own variants, and adding one must not be a breaking change.
+//! `#[non_exhaustive]`: later primitives add their own variants without making
+//! that addition a breaking change.
 
 /// Everything that can go wrong inside `crpg-core`.
 ///
 /// Deliberately small. Errors cover entity deserialization and exact
-/// [`Fx16_16`](crate::Fx16_16) parsing at untrusted-input boundaries.
+/// [`Fx16_16`](crate::Fx16_16) and [`Ulid`](crate::Ulid) parsing at
+/// untrusted-input boundaries.
 /// Every other entity operation reports absence with `Option`
 /// rather than an error, because "this id is dead" is an ordinary outcome and
 /// not a failure.
@@ -46,6 +47,26 @@ pub enum CoreError {
     /// range, or could not be represented exactly with 16 fractional bits.
     #[error("invalid fixed-point decimal: expected an exact value in the Fx16_16 range")]
     InvalidFixedPoint,
+
+    /// A ULID string did not contain exactly 26 characters.
+    #[error("invalid ULID length: expected 26 characters, got {actual}")]
+    InvalidUlidLength {
+        /// Number of characters in the rejected input.
+        actual: usize,
+    },
+
+    /// A ULID string contained a character outside the Crockford alphabet.
+    #[error("invalid ULID character '{character}' at position {index}")]
+    InvalidUlidCharacter {
+        /// Rejected character.
+        character: char,
+        /// Zero-based character position.
+        index: usize,
+    },
+
+    /// A 26-character ULID encoded a value wider than 128 bits.
+    #[error("ULID overflow: first character must be between '0' and '7'")]
+    UlidOverflow,
 }
 
 /// `Result` specialised to [`CoreError`].

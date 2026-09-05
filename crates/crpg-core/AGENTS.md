@@ -1,8 +1,7 @@
 # crpg-core — agent contract
 
-Scope note: this file describes the crate **as it exists after T006c**.
-T006d-T006e (`Tick`/`RoundCount`/`Ulid`, the interner) each extend it. Do not
-document a type before its task lands.
+Scope note: this file describes the crate **as it exists after T006d**. T006e
+(the interner) extends it. Do not document a type before its task lands.
 
 ## Purpose
 
@@ -18,15 +17,17 @@ deterministic by construction.
 
 Today that is entity identity — `EntityId` and the `GenerationalArena<T>` that
 issues it — plus `Fx16_16` fixed-point arithmetic, `DeterministicRng` with named
-PCG32 streams, and the crate-wide error type.
+PCG32 streams, unit-safe simulation counters, authored-object ULIDs, and the
+crate-wide error type.
 
 ## Public API  (changing this requires an ADR)
 
 `CoreError`, `Result<T>`, `EntityId`, `GenerationalArena<T>`, `Fx16_16`,
-`DeterministicRng`, `Pcg32`.
+`DeterministicRng`, `Pcg32`, `Tick`, `RoundCount`, `Ulid`.
 
 `CoreError`: `CorruptArena` and `InvalidEntityId` guard deserialization;
-`InvalidFixedPoint` rejects malformed, inexact or out-of-range decimals.
+`InvalidFixedPoint` rejects malformed, inexact or out-of-range decimals. The
+three ULID variants distinguish wrong length, invalid characters and overflow.
 
 - `EntityId::index() -> u32`, `EntityId::generation() -> u32`. Fields are
   private; only an arena mints an id.
@@ -74,6 +75,18 @@ named streams; they do not construct or retain free-standing streams.
 `tests/rng.rs` pins the first 16 outputs for the recorded seed and stream name.
 Never re-bless that golden vector casually: first establish why changing every
 random decision and replay in the project is intended.
+
+### Time and ULID contract (T006d)
+
+`time::{Tick, RoundCount}` and `ulid::Ulid` are re-exported at the crate root.
+`Tick` and `RoundCount` expose only explicit saturating or checked arithmetic;
+they deliberately implement no arithmetic operators. `Ulid` stores the
+timestamp in the high 48 bits and caller-supplied randomness in the low 80.
+
+ULID display is the canonical 26-character uppercase Crockford base32 form.
+Parsing is case-insensitive, accepts `I`/`L` as `1` and `O` as `0`, and rejects
+wrong lengths, alphabet violations and values wider than 128 bits distinctly.
+Serde uses that string form, not the underlying `u128`.
 
 ## Invariants
 
@@ -188,3 +201,10 @@ ignored: it is the shrunk counterexample, and losing it loses the regression.
   only for something that genuinely fails. Absence is reported with `Option`
   (`get`, `remove`), because "this id is dead" is an ordinary outcome, not an
   error.
+- **`Tick` has no seconds conversion, and adding one is a spec §2.5
+  violation.** Tick rate is server configuration and round length is ruleset
+  data. Do not add a tick-rate constant, `Duration`, or milliseconds/seconds
+  conversion to `Tick` or `RoundCount`.
+- **`Ulid` generation does not live here.** Core has no clock or entropy source.
+  Callers author ids by supplying both fields to `Ulid::from_parts`; do not add
+  `new`, `now`, `SystemTime`, or an RNG-backed constructor.

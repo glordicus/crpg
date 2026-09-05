@@ -2,9 +2,9 @@
 
 The primitives every other crate may depend on, and nothing else.
 
-**State:** entity identity, the crate error type, fixed-point maths and the
-named-stream RNG exist (T006a-T006c). Time types and the interner are designed
-but unwritten (T006d-T006e).
+**State:** entity identity, the crate error type, fixed-point maths, the
+named-stream RNG, simulation time counters and authored-object ULIDs exist
+(T006a-T006d). The interner is designed but unwritten (T006e).
 
 Decisions: [ADR-0006](../adr/0006-crpg-core-primitives.md).
 Working contract: [`crates/crpg-core/AGENTS.md`](../../crates/crpg-core/AGENTS.md).
@@ -65,15 +65,12 @@ src/
   entity.rs   EntityId, GenerationalArena<T>          (T006a)
   fixed.rs    Fx16_16                                (T006b)
   rng.rs      DeterministicRng, Pcg32                (T006c)
+  time.rs     Tick, RoundCount                       (T006d)
+  ulid.rs     Ulid                                   (T006d)
 ```
 
-`lib.rs` stays a declaration file on purpose. T006d-T006e each add their modules
-and crate-root exports, so they collide on the declaration block and can run in
-parallel worktrees.
-
-Planned, as the task files specify them: `time.rs` (`Tick`, `RoundCount`) and
-`ulid.rs` (`Ulid`) — T006d writes both — and `intern.rs` (`Interner`, `StatId`,
-`TagId`, T006e).
+`lib.rs` stays a declaration file on purpose. T006e adds its module and
+crate-root exports there.
 
 `Ulid` is a separate module from `Tick` and `RoundCount` deliberately: they are
 all "time" colloquially, but `Tick` and `RoundCount` are simulation counters
@@ -161,12 +158,29 @@ output transform are replay contracts pinned by `tests/rng.rs`; range reduction
 uses rejection sampling. Callers select streams by stable subsystem names so
 adding draws in one system cannot shift another system's sequence.
 
+### `time.rs`
+
+`Tick(u64)` and `RoundCount(u32)` make the simulation's two time units distinct
+and make seconds unrepresentable in core. Their private scalar representations
+serialize transparently as integers. Each offers construction, inspection and
+explicit saturating or checked advancement; no arithmetic operator obscures
+the unit being added. Tick rate remains server configuration and round duration
+remains ruleset data (spec §2.5).
+
+### `ulid.rs`
+
+`Ulid(u128)` identifies authored campaign objects (spec §4.3). Its high 48 bits
+hold a caller-supplied millisecond timestamp and its low 80 bits caller-supplied
+randomness; construction masks over-wide fields and never consults a clock or
+entropy source. Display and serde use canonical uppercase Crockford base32 so
+integer order, displayed lexical order and authored JSON order agree. Parsing
+also accepts lowercase and Crockford's `I`/`L`/`O` aliases while reporting
+length, character and 128-bit overflow failures separately.
+
 ## Planned modules, and what is already fixed about them
 
-Design settled in ADR-0006; the remaining code is T006d-T006e.
+Design settled in ADR-0006; the remaining code is T006e.
 
-- **`Tick`, `RoundCount`, `Ulid`** — sim time, never wall-clock seconds. A
-  "6-second round" is a ruleset constant, not an engine one (spec §2.5).
 - **`Interner`, `StatId`, `TagId`** — dense `u32` handles that are
   **runtime-only**: they have no `Serialize`/`Deserialize` impl at all. Ids are
   assigned in first-intern order, so persisting them as integers would mean
@@ -176,6 +190,6 @@ Design settled in ADR-0006; the remaining code is T006d-T006e.
 
 ## Open
 
-- Nothing blocking. Remaining T006d-T006e tasks are independent of each other.
+- Nothing blocking. T006e completes the planned core primitives.
 - `blake3` will be needed for `state_hash` (T008) and is not yet authorised as
   a dependency — ADR-0006 says so explicitly and does not decide it.

@@ -6,8 +6,19 @@ Updated: 2026-09-05
 Phase 1 — core skeleton and test harness.
 
 ## Branch state
-T006b and T006c are merged to `master`. The Done history below is merged work
-only.
+T006b and T006c are merged to `master`. T006d is complete and green in the
+uncommitted `master` working tree. The Done history below is merged work only.
+
+## Complete in working tree
+- T006d `crpg-core`: `Tick(u64)` and `RoundCount(u32)` provide explicit
+  saturating/checked simulation-time arithmetic with transparent integer serde
+  and no seconds conversion. `Ulid(u128)` masks caller-supplied 48-bit timestamp
+  and 80-bit randomness fields, uses canonical uppercase Crockford base32 for
+  display and string serde, accepts lowercase plus `I`/`L`/`O` aliases, and
+  reports length, character and overflow parse failures separately. Seventeen
+  new tests, including six property tests, bring core to 74 tests including its
+  doctest. All required local gates pass; no proptest regression file was
+  produced. Not committed or merged.
 
 ## Done
 - T004 workspace, 15 stub crates, CI green on Linux and Windows
@@ -150,10 +161,9 @@ only.
   Spike lives in `C:\CRPG\Dev\spike-quic`, not this workspace.
 
 ## Next
-- T006d next, then T006e crpg-core: `Tick`/`RoundCount`/`Ulid`, then the
-  interner. T006a laid down the crate's `Cargo.toml`, module layout and
-  `AGENTS.md`; the remaining tasks are independent and collide in `lib.rs` and
-  the crate documentation when run in parallel worktrees.
+- T006e crpg-core: `Interner`, `StatId`, `TagId`. T006a laid down the crate's
+  `Cargo.toml`, module layout and `AGENTS.md`; T006d has extended them in the
+  current working tree.
 - T007 crpg-sim: World and ComponentStore. Its entity arena is
   `GenerationalArena<EntityMeta>` from T006a, already property-tested — not a
   second implementation.
