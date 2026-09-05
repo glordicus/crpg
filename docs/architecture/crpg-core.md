@@ -2,9 +2,9 @@
 
 The primitives every other crate may depend on, and nothing else.
 
-**State:** entity identity and the crate error type exist (T006a). Fixed-point
-maths, the RNG, time types and the interner are designed but unwritten
-(T006b–T006e).
+**State:** entity identity, the crate error type and fixed-point maths exist
+(T006a-T006b). The RNG, time types and interner are designed but unwritten
+(T006c-T006e).
 
 Decisions: [ADR-0006](../adr/0006-crpg-core-primitives.md).
 Working contract: [`crates/crpg-core/AGENTS.md`](../../crates/crpg-core/AGENTS.md).
@@ -63,14 +63,15 @@ src/
   lib.rs      pub mod + pub use + the crate doc comment, nothing else
   error.rs    CoreError, Result<T>
   entity.rs   EntityId, GenerationalArena<T>          (T006a)
+  fixed.rs    Fx16_16                                (T006b)
 ```
 
-`lib.rs` stays a declaration file on purpose. T006b–T006e each add one module
+`lib.rs` stays a declaration file on purpose. T006c-T006e each add their modules
 and extend `CoreError`, so they collide on a single `pub mod` line and can run
 in parallel worktrees.
 
-Planned, as the task files specify them: `fixed.rs` (`Fx16_16`, T006b),
-`rng.rs` (`DeterministicRng`, `Pcg32`, T006c), `time.rs` (`Tick`,
+Planned, as the task files specify them: `rng.rs` (`DeterministicRng`, `Pcg32`,
+T006c), `time.rs` (`Tick`,
 `RoundCount`) and `ulid.rs` (`Ulid`) — T006d writes both — and `intern.rs`
 (`Interner`, `StatId`, `TagId`, T006e).
 
@@ -85,8 +86,8 @@ a clock.
 One enum for the whole crate, `#[non_exhaustive]` so later modules can add
 variants without a breaking change. It is deliberately small: absence is
 reported with `Option`, not an error, because "this id is dead" is an ordinary
-outcome. Both current variants are raised only at a deserialization boundary —
-`CorruptArena` and `InvalidEntityId`.
+outcome. `CorruptArena` and `InvalidEntityId` guard entity deserialization;
+`InvalidFixedPoint` guards exact decimal parsing.
 
 ### `entity.rs`
 
@@ -127,17 +128,29 @@ entitled to name that entity — a well-formed id still addresses whatever now
 occupies its slot, and authority belongs to the layer that knows who the sender
 is (`crpg-net`, T018 onward).
 
+### `fixed.rs`
+
+`Fx16_16` is a `pub` struct over a private raw `i32` newtype with 16
+fractional bits. It has no dependency on entity storage. Consumers use it
+wherever rules need fractions without introducing floating-point arithmetic
+(ADR-0006 Decision 2).
+
+The module contains arithmetic and exact decimal conversion. Wide intermediates
+feed either a range check (`checked_*`) or a clamp (operators and
+`saturating_*`). Division shares an explicit floor adjustment for either
+divisor sign. The named `ceil` and `round` methods offer deliberate alternatives
+to flooring; out-of-range rounded integers still saturate.
+
+Serde exposes only the raw integer for snapshots and hashing. `Display` and
+`FromStr` are separate exact-decimal paths; the parser cancels decimal factors
+before binary scaling to avoid overflowing its intermediate. A human-friendly
+serde adapter still belongs to `crpg-data`, not core. Arithmetic and conversion
+properties live in `tests/fixed.rs` and need no floating-point oracle.
+
 ## Planned modules, and what is already fixed about them
 
-Design settled in ADR-0006; the code is T006b–T006e.
+Design settled in ADR-0006; the code is T006c-T006e.
 
-- **`Fx16_16`** — `i32` newtype, 16 fractional bits. Arithmetic **saturates**
-  rather than panicking or wrapping, because Rust's default `i32` panics in
-  debug and wraps in release, and a replay that aborts in a test but returns a
-  different number on a release server is precisely the failure the determinism
-  apparatus exists to catch and precisely the one it would not. Every lossy
-  operation rounds toward −∞, one rule with no exceptions. Serializes as the
-  raw `i32`.
 - **`DeterministicRng`** — PCG32, one serializable object owning all its
   streams in a `BTreeMap<String, Pcg32>`. One object rather than free-standing
   sub-streams so that `World` cannot forget to serialize one; PCG rather than
@@ -155,6 +168,6 @@ Design settled in ADR-0006; the code is T006b–T006e.
 
 ## Open
 
-- Nothing blocking. T006b–T006e are independent of each other and of T007.
+- Nothing blocking. Remaining T006c-T006e tasks are independent of each other.
 - `blake3` will be needed for `state_hash` (T008) and is not yet authorised as
   a dependency — ADR-0006 says so explicitly and does not decide it.

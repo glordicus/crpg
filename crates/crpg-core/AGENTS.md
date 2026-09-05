@@ -1,7 +1,7 @@
 # crpg-core — agent contract
 
-Scope note: this file describes the crate **as it exists after T006a**.
-T006b–T006e (`Fx16_16`, `DeterministicRng`, `Tick`/`RoundCount`/`Ulid`, the
+Scope note: this file describes the crate **as it exists after T006b**.
+T006c-T006e (`DeterministicRng`, `Tick`/`RoundCount`/`Ulid`, the
 interner) each extend it. Do not document a type before its task lands.
 
 ## Purpose
@@ -17,14 +17,14 @@ sim <- ...`) and depends on no workspace crate. Everything here is
 deterministic by construction.
 
 Today that is entity identity — `EntityId` and the `GenerationalArena<T>` that
-issues it — plus the crate-wide error type.
+issues it — plus `Fx16_16` fixed-point arithmetic and the crate-wide error type.
 
 ## Public API  (changing this requires an ADR)
 
-`CoreError`, `Result<T>`, `EntityId`, `GenerationalArena<T>`.
+`CoreError`, `Result<T>`, `EntityId`, `GenerationalArena<T>`, `Fx16_16`.
 
-`CoreError` has two variants so far: `CorruptArena` and `InvalidEntityId`,
-both raised only at a deserialization boundary.
+`CoreError`: `CorruptArena` and `InvalidEntityId` guard deserialization;
+`InvalidFixedPoint` rejects malformed, inexact or out-of-range decimals.
 
 - `EntityId::index() -> u32`, `EntityId::generation() -> u32`. Fields are
   private; only an arena mints an id.
@@ -35,6 +35,24 @@ both raised only at a deserialization boundary.
 Semantics come from **ADR-0006 Decision 1**. Changing any of them is an ADR,
 not a refactor: `crpg-sim`'s `World` (T007), `state_hash` (T008) and every
 saved campaign inherit them.
+
+### Fixed-point contract (T006b, ADR-0006 Decision 2)
+
+`fixed::Fx16_16` is also re-exported at the crate root. Its rustdoc lists the
+constants, conversions, rounding/sign queries, checked/saturating arithmetic,
+operators, assignment operators, `Sum`, `Display`/`FromStr`, and serde API.
+
+1. Arithmetic saturates, never wraps or panics. Zero division returns `MAX`,
+   `MIN`, or `ZERO` by numerator sign; checked division returns `None`.
+2. Lossy arithmetic floors. `ceil` and `round` are explicit alternatives;
+   `round` uses halves away from zero. All three saturate at range edges.
+3. Display is shortest exact decimal; parsing rejects precision loss. Serde
+   stays the raw `i32`, not the display string.
+
+Keep intermediate arithmetic in `i64`. Do not replace floor division with
+`div_euclid`: `EPSILON / from_int(-3)` must be `-EPSILON`, not zero. `Sum`
+saturates at each step in iterator order, so regrouping it changes results.
+`tests/fixed.rs` pins these behaviours with integer-only property tests.
 
 ## Invariants
 

@@ -7,10 +7,9 @@
 
 /// Everything that can go wrong inside `crpg-core`.
 ///
-/// Deliberately small. As of T006a the only fallible operations in the crate
-/// are deserializing a [`GenerationalArena`](crate::GenerationalArena) and
-/// deserializing an [`EntityId`](crate::EntityId) — both untrusted-input
-/// boundaries. Every other entity operation reports absence with `Option`
+/// Deliberately small. Errors cover entity deserialization and exact
+/// [`Fx16_16`](crate::Fx16_16) parsing at untrusted-input boundaries.
+/// Every other entity operation reports absence with `Option`
 /// rather than an error, because "this id is dead" is an ordinary outcome and
 /// not a failure.
 #[derive(Debug, thiserror::Error, PartialEq, Eq, Clone)]
@@ -42,6 +41,11 @@ pub enum CoreError {
     /// the specific defect and is intended for a log, not for matching on.
     #[error("invalid entity id: {0}")]
     InvalidEntityId(&'static str),
+
+    /// A fixed-point decimal had invalid syntax, was outside the representable
+    /// range, or could not be represented exactly with 16 fractional bits.
+    #[error("invalid fixed-point decimal: expected an exact value in the Fx16_16 range")]
+    InvalidFixedPoint,
 }
 
 /// `Result` specialised to [`CoreError`].
